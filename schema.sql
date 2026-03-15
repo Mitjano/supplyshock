@@ -191,6 +191,10 @@ SELECT add_retention_policy('vessel_positions',
     INTERVAL '90 days');
 
 -- Compression: compress chunks older than 7 days
+ALTER TABLE vessel_positions SET (
+    timescaledb.compress,
+    timescaledb.compress_segmentby = 'mmsi'
+);
 SELECT add_compression_policy('vessel_positions',
     INTERVAL '7 days');
 
@@ -221,6 +225,10 @@ SELECT create_hypertable('commodity_prices', 'time',
 SELECT add_retention_policy('commodity_prices',
     INTERVAL '5 years');
 
+ALTER TABLE commodity_prices SET (
+    timescaledb.compress,
+    timescaledb.compress_segmentby = 'commodity'
+);
 SELECT add_compression_policy('commodity_prices',
     INTERVAL '30 days');
 
@@ -257,6 +265,10 @@ SELECT add_retention_policy('alert_events',
     INTERVAL '1 year');
 
 -- Compression: compress chunks older than 7 days
+ALTER TABLE alert_events SET (
+    timescaledb.compress,
+    timescaledb.compress_segmentby = 'type'
+);
 SELECT add_compression_policy('alert_events',
     INTERVAL '7 days');
 
