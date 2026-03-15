@@ -9,6 +9,8 @@ from api.v1.auth import router as auth_router
 from api.v1.vessels import router as vessels_router
 from api.v1.ports import router as ports_router
 from api.v1.commodities import router as commodities_router
+from api.v1.alerts import router as alerts_router
+from api.v1.bottlenecks import router as bottlenecks_router
 
 app = FastAPI(
     title="SupplyShock API",
@@ -54,3 +56,5 @@ app.include_router(auth_router, prefix="/api/v1")
 app.include_router(vessels_router, prefix="/api/v1")
 app.include_router(ports_router, prefix="/api/v1")
 app.include_router(commodities_router, prefix="/api/v1")
+app.include_router(alerts_router, prefix="/api/v1")
+app.include_router(bottlenecks_router, prefix="/api/v1")
