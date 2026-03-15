@@ -1,8 +1,6 @@
-# Environment
-.env
-.env.local
-.env.production
-.env.*.local
+# Environment — block all .env* except .env.example
+.env*
+!.env.example
 
 # Python
 __pycache__/
@@ -49,3 +47,4 @@ htmlcov/
 # Backups
 *.sql.gz
 *.dump
+celerybeat-schedule
