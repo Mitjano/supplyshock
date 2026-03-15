@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 from config import settings
 from api.v1.auth import router as auth_router
+from api.v1.vessels import router as vessels_router
 
 app = FastAPI(
     title="SupplyShock API",
@@ -48,3 +49,4 @@ async def health_check():
 
 # ── API v1 routers ──
 app.include_router(auth_router, prefix="/api/v1")
+app.include_router(vessels_router, prefix="/api/v1")

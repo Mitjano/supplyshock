@@ -16,7 +16,29 @@ celery_app.conf.update(
     timezone="UTC",
     enable_utc=True,
     task_time_limit=600,
+    beat_schedule={
+        "refresh-vessel-positions": {
+            "task": "refresh_latest_vessel_positions",
+            "schedule": 30.0,  # every 30 seconds
+        },
+    },
 )
+
+
+@celery_app.task(name="refresh_latest_vessel_positions")
+def refresh_latest_vessel_positions():
+    """Refresh the latest_vessel_positions materialized view.
+
+    Runs every 30s via Celery Beat. Uses CONCURRENTLY so reads aren't blocked.
+    """
+    import psycopg2
+    conn = psycopg2.connect(settings.DATABASE_URL_SYNC)
+    conn.autocommit = True
+    try:
+        with conn.cursor() as cur:
+            cur.execute("REFRESH MATERIALIZED VIEW CONCURRENTLY latest_vessel_positions")
+    finally:
+        conn.close()
 
 
 @celery_app.task(name="start_ais_stream", bind=True, max_retries=3)
