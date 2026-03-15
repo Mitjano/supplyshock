@@ -11,6 +11,9 @@ from api.v1.ports import router as ports_router
 from api.v1.commodities import router as commodities_router
 from api.v1.alerts import router as alerts_router
 from api.v1.bottlenecks import router as bottlenecks_router
+from api.v1.alert_subscriptions import router as alert_subscriptions_router
+from api.v1.billing import router as billing_router
+from webhooks.stripe import router as stripe_webhook_router
 
 app = FastAPI(
     title="SupplyShock API",
@@ -58,3 +61,8 @@ app.include_router(ports_router, prefix="/api/v1")
 app.include_router(commodities_router, prefix="/api/v1")
 app.include_router(alerts_router, prefix="/api/v1")
 app.include_router(bottlenecks_router, prefix="/api/v1")
+app.include_router(alert_subscriptions_router, prefix="/api/v1")
+app.include_router(billing_router, prefix="/api/v1")
+
+# ── Webhooks (no /api/v1 prefix) ──
+app.include_router(stripe_webhook_router)

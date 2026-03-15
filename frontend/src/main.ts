@@ -19,6 +19,14 @@ const router = createRouter({
       path: '/map',
       component: () => import('./views/MapView.vue'),
     },
+    {
+      path: '/commodities',
+      component: () => import('./views/CommodityDashboard.vue'),
+    },
+    {
+      path: '/bottlenecks',
+      component: () => import('./views/BottleneckMonitor.vue'),
+    },
   ],
 })
 
