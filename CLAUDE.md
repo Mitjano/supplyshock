@@ -10,7 +10,7 @@
 ```bash
 git clone https://github.com/YOUR_HANDLE/supplyshock.git
 cd supplyshock
-cp .env.example .env          # fill in at minimum: CLERK_*, MAPBOX_ACCESS_TOKEN, AISSTREAM_API_KEY
+cp .env.example .env          # fill in at minimum: CLERK_*, AISSTREAM_API_KEY
 docker compose up -d          # starts db, redis, backend, celery, frontend
 docker compose exec backend alembic upgrade head   # run migrations (auto on start too)
 open http://localhost:5173    # frontend
@@ -45,12 +45,12 @@ combining vessel tracking + price signals + supply chain risk.
 | Database | PostgreSQL 16 + TimescaleDB 2.x | One instance, two roles |
 | Cache / pub-sub | Redis 7 | Sessions, rate limits, SSE |
 | Task queue | Celery 5 + Redis broker | Long-running simulations |
-| Simulation | OASIS (CAMEL-AI) + Zep Cloud | Agent memory |
+| Simulation | OASIS (CAMEL-AI) + Zep Cloud | Agent memory; requires Python 3.11 venv (see below) |
 | Frontend | Vue 3 + Vite + Pinia | In `/frontend` |
-| Map | Mapbox GL JS + Deck.gl | Vessel rendering |
-| Auth | Clerk | Google + email + GitHub OAuth |
+| Map | MapLibre GL JS + Deck.gl | Open-source, $0 always. npm: `maplibre-gl` |
+| Auth | Clerk | Google + email + GitHub OAuth; use `@clerk/clerk-js` (no official Vue SDK) |
 | Payments | Stripe | Webhooks in `/backend/webhooks` |
-| Email | Resend + React Email | Transactional only |
+| Email | Resend + Jinja2 templates | Transactional only; templates in `backend/email/templates/*.html` |
 | Reverse proxy | Nginx | TLS termination via Let's Encrypt |
 | Containers | Docker + Docker Compose | One compose file per environment |
 | CI | GitHub Actions | Lint → test → build → deploy |
@@ -306,6 +306,17 @@ Always set `task_time_limit` in Celery task decorator.
 ---
 
 ## Simulation framework — OASIS commodity fork
+
+**Python 3.11 requirement:** OASIS (camel-ai) wymaga Pythona 3.11 — nie jest kompatybilny z 3.12.
+Symulacje uruchamiane są w oddzielnym virtualenv:
+```bash
+# Setup (jednorazowo)
+python3.11 -m venv backend/simulation/.venv311
+source backend/simulation/.venv311/bin/activate
+pip install -r backend/simulation/requirements-oasis.txt
+```
+W Docker: Celery worker dla symulacji używa multi-stage build z `python:3.11-slim` jako bazą.
+Główny backend (FastAPI) pozostaje na Pythonie 3.12.
 
 **Lokalizacja forka:** `backend/simulation/oasis_fork/`
 Nigdy nie modyfikuj zainstalowanego pakietu `camel-oasis`. Pracuj wyłącznie na lokalnej kopii w `oasis_fork/`.

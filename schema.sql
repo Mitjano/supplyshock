@@ -44,11 +44,8 @@ CREATE TABLE users (
     plan            plan_type NOT NULL DEFAULT 'free',
     plan_expires_at TIMESTAMPTZ,                -- NULL = lifetime / not applicable
     stripe_customer_id TEXT UNIQUE,             -- set after first Stripe interaction
-    -- IMPORTANT: Do NOT use simulations_used_this_month for limit enforcement.
-    -- Instead, count with: SELECT COUNT(*) FROM simulations WHERE user_id=? AND
-    -- created_at >= date_trunc('month', NOW()). This never needs resetting and
-    -- is always accurate. This column is kept for display only (cached count).
-    simulations_used_this_month INT NOT NULL DEFAULT 0,
+    -- Simulation count: derive via SELECT COUNT(*) FROM simulations
+    -- WHERE user_id=? AND created_at >= date_trunc('month', NOW())
     last_seen_at    TIMESTAMPTZ,
     -- Onboarding checklist state (Issue #37)
     -- Keys: 'explore_map', 'first_simulation', 'setup_alert'

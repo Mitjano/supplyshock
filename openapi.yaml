@@ -925,13 +925,18 @@ paths:
                             congestion_index: { type: number }
                             risk_level:       { type: string }
 
-  # ── Health check (public) ─────────────────────────────
+  # ── Health check (public, root-level — NOT under /api/v1) ──
   /health:
+    servers:
+      - url: https://api.supplyshock.io
+        description: Production (root)
+      - url: http://localhost:8000
+        description: Local development (root)
     get:
       summary: Health check — returns status of db and redis
       tags: [Health]
       security: []
-      description: Public endpoint. Used by docker-compose healthcheck and uptime monitors.
+      description: Public endpoint at root level (not /api/v1). Used by docker-compose healthcheck and uptime monitors.
       responses:
         "200":
           content:
@@ -954,8 +959,13 @@ paths:
                   db:     { type: string, example: error }
                   redis:  { type: string, example: ok }
 
-  # ── Webhooks (no auth — Stripe signature verification instead) ──
+  # ── Webhooks (no auth — Stripe signature verification instead, root-level) ──
   /webhooks/stripe:
+    servers:
+      - url: https://api.supplyshock.io
+        description: Production (root)
+      - url: http://localhost:8000
+        description: Local development (root)
     post:
       summary: Stripe webhook receiver
       tags: [Webhooks]

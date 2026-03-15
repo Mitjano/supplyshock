@@ -260,10 +260,10 @@ Patrz sekcja "Auth rules" w CLAUDE.md. Używaj biblioteki `clerk-backend-api` lu
 **Title:** `[M1] Frontend — live map with vessels, ports, trade flows`
 **Labels:** `milestone-1` `frontend` `priority-critical`
 
-**Cel:** Interaktywna mapa Mapbox z żywymi statkami, portami i liniami przepływów.
+**Cel:** Interaktywna mapa MapLibre GL JS z żywymi statkami, portami i liniami przepływów.
 
 **Acceptance criteria:**
-- [ ] Mapbox GL JS z Deck.gl ScatterplotLayer renderuje pozycje statków (update co 30s)
+- [ ] MapLibre GL JS z Deck.gl ScatterplotLayer renderuje pozycje statków (update co 30s)
 - [ ] Statki kolorowane według vessel_type
 - [ ] Kliknięcie na statek → popup z danymi z GET /api/v1/vessels/{mmsi}
 - [ ] Porty renderowane jako punkty, kolorowane według commodity
@@ -464,13 +464,13 @@ Patrz sekcja "Auth rules" w CLAUDE.md. Używaj biblioteki `clerk-backend-api` lu
 - [ ] Email po pomyślnym upgrade planu ("Witaj w Pro!")
 - [ ] Email przy payment_failed ("Płatność nieudana")
 - [ ] Email z alertem krytycznym (jeśli user ma notify_email=true)
-- [ ] Wszystkie szablony w `backend/email/templates/` jako React Email components
+- [ ] Wszystkie szablony w `backend/email/templates/` jako Jinja2 HTML templates
 
 **Pliki do stworzenia:**
 - `backend/email/resend.py`
-- `backend/email/templates/welcome_pro.tsx`
-- `backend/email/templates/payment_failed.tsx`
-- `backend/email/templates/critical_alert.tsx`
+- `backend/email/templates/welcome_pro.html`
+- `backend/email/templates/payment_failed.html`
+- `backend/email/templates/critical_alert.html`
 
 ---
 
@@ -940,11 +940,9 @@ oasis-fork     (kolor: #7c3aed)
 onboarding     (kolor: #7c3aed)
 monitoring     (kolor: #6b7280)
 
-## Decyzja architektoniczna: Mapbox vs MapLibre
-Zalecane: użyj MapLibre GL JS zamiast Mapbox.
-- MapLibre = open-source fork Mapbox z identycznym API → $0 zawsze
-- Mapbox free tier 50k map loads/mies → łatwo przekroczyć przy viralowym launchu
-- Migracja jest prosta: zmień import i token
-- W Issue #13 użyj MapLibre GL JS (npm: maplibre-gl)
-- Dokumentacja: https://maplibre.org/maplibre-gl-js/docs/
+## Decyzja architektoniczna: MapLibre GL JS (zatwierdzona)
+Używamy MapLibre GL JS — open-source fork Mapbox z identycznym API, $0 zawsze.
+- npm: `maplibre-gl` (nie `mapbox-gl`)
+- Nie wymaga tokena API (darmowe tile serwery lub self-hosted)
+- Issue #13 i wszystkie komponenty mapowe używają MapLibre
 ```
