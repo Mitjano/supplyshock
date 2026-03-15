@@ -1,0 +1,988 @@
+openapi: "3.1.0"
+
+info:
+  title: SupplyShock API
+  version: "1.0.0"
+  description: |
+    Supply chain monitoring and commodity prediction platform.
+    All endpoints require Bearer JWT from Clerk unless marked as public.
+
+servers:
+  - url: https://api.supplyshock.io/api/v1
+    description: Production
+  - url: http://localhost:8000/api/v1
+    description: Local development
+
+security:
+  - ClerkJWT: []
+
+components:
+  securitySchemes:
+    ClerkJWT:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    Error:
+      type: object
+      required: [error, code]
+      properties:
+        error: { type: string }
+        code:  { type: string }
+
+    Meta:
+      type: object
+      properties:
+        page:  { type: integer }
+        limit: { type: integer }
+        total: { type: integer }
+
+    Plan:
+      type: string
+      enum: [free, pro, business, enterprise]
+
+    # ── User ──────────────────────────────────────────────
+    User:
+      type: object
+      properties:
+        id:              { type: string, format: uuid }
+        email:           { type: string, format: email }
+        name:            { type: string }
+        avatar_url:      { type: string }
+        plan:            { $ref: '#/components/schemas/Plan' }
+        plan_expires_at: { type: string, format: date-time, nullable: true }
+        simulations_used_this_month: { type: integer }
+        created_at:      { type: string, format: date-time }
+
+    # ── Vessel ────────────────────────────────────────────
+    VesselPosition:
+      type: object
+      properties:
+        mmsi:         { type: integer }
+        imo:          { type: integer, nullable: true }
+        vessel_name:  { type: string, nullable: true }
+        vessel_type:  { type: string }
+        latitude:     { type: number, format: double }
+        longitude:    { type: number, format: double }
+        speed_knots:  { type: number, nullable: true }
+        course:       { type: number, nullable: true }
+        destination:  { type: string, nullable: true }
+        flag_country: { type: string, nullable: true }
+        cargo_type:   { type: string, nullable: true }
+        time:         { type: string, format: date-time }
+
+    # ── Commodity ─────────────────────────────────────────
+    CommodityPrice:
+      type: object
+      properties:
+        commodity:  { type: string }
+        benchmark:  { type: string }
+        price:      { type: number }
+        currency:   { type: string }
+        unit:       { type: string }
+        change_1d:  { type: number, nullable: true }
+        change_pct: { type: number, nullable: true }
+        time:       { type: string, format: date-time }
+        is_delayed: { type: boolean }
+
+    # ── Alert ─────────────────────────────────────────────
+    Alert:
+      type: object
+      properties:
+        id:         { type: string, format: uuid }
+        time:       { type: string, format: date-time }
+        type:       { type: string, enum: [ais_anomaly, price_move, news_event, port_congestion, geopolitical] }
+        severity:   { type: string, enum: [info, warning, critical] }
+        title:      { type: string }
+        body:       { type: string, nullable: true }
+        commodity:  { type: string, nullable: true }
+        region:     { type: string, nullable: true }
+        source:     { type: string, nullable: true }
+        source_url: { type: string, nullable: true }
+        is_active:  { type: boolean }
+
+    # ── Simulation ────────────────────────────────────────
+    SimulationParameters:
+      type: object
+      required: [node, event_type, duration_weeks, intensity, agents, horizon_days]
+      properties:
+        node:            { type: string, description: "Bottleneck node slug e.g. port_newcastle_au" }
+        event_type:      { type: string, enum: [flood, strike, blockade, sanctions, accident, cyclone] }
+        description:     { type: string, nullable: true, maxLength: 1000 }
+        duration_weeks:  { type: integer, minimum: 1, maximum: 52 }
+        intensity:       { type: string, enum: [mild, moderate, severe] }
+        agents:          { type: integer, enum: [500, 2000, 10000] }
+        horizon_days:    { type: integer, enum: [7, 30, 90] }
+
+    SimulationResult:
+      type: object
+      properties:
+        price_predictions:
+          type: array
+          items:
+            type: object
+            properties:
+              commodity:      { type: string }
+              horizon_days:   { type: integer }
+              change_pct_low: { type: number }
+              change_pct_high:{ type: number }
+              probability:    { type: number }
+        winners:
+          type: array
+          items:
+            type: object
+            properties:
+              entity: { type: string }
+              reason: { type: string }
+        losers:
+          type: array
+          items:
+            type: object
+            properties:
+              entity: { type: string }
+              reason: { type: string }
+        agent_log:
+          type: array
+          items: { type: string }
+
+    Simulation:
+      type: object
+      properties:
+        id:              { type: string, format: uuid }
+        title:           { type: string }
+        node:            { type: string }
+        event_type:      { type: string }
+        status:          { type: string, enum: [queued, running, completed, failed, timeout] }
+        progress:        { type: integer, minimum: 0, maximum: 100 }
+        parameters:      { $ref: '#/components/schemas/SimulationParameters' }
+        result:          { $ref: '#/components/schemas/SimulationResult', nullable: true }
+        error_message:   { type: string, nullable: true }
+        started_at:      { type: string, format: date-time, nullable: true }
+        completed_at:    { type: string, format: date-time, nullable: true }
+        created_at:      { type: string, format: date-time }
+
+    # ── Bottleneck ────────────────────────────────────────
+    BottleneckNode:
+      type: object
+      properties:
+        id:               { type: string, format: uuid }
+        slug:             { type: string }
+        name:             { type: string }
+        type:             { type: string }
+        country_code:     { type: string }
+        latitude:         { type: number, nullable: true }
+        longitude:        { type: number, nullable: true }
+        commodities:      { type: array, items: { type: string } }
+        annual_volume_mt: { type: number, nullable: true }
+        global_share_pct: { type: number, nullable: true }
+        current_risk:     { type: integer, minimum: 1, maximum: 10 }
+        risk_level:       { type: string, enum: [normal, elevated, high, critical] }
+        active_alerts:    { type: integer }
+
+    # ── API Key ───────────────────────────────────────────
+    ApiKey:
+      type: object
+      properties:
+        id:          { type: string, format: uuid }
+        key_prefix:  { type: string, description: "First 8 chars for display only" }
+        name:        { type: string }
+        last_used_at:{ type: string, format: date-time, nullable: true }
+        expires_at:  { type: string, format: date-time, nullable: true }
+        is_active:   { type: boolean }
+        created_at:  { type: string, format: date-time }
+
+    ApiKeyCreated:
+      allOf:
+        - $ref: '#/components/schemas/ApiKey'
+        - type: object
+          properties:
+            key:
+              type: string
+              description: "Full key — shown ONCE, never stored. Store it securely."
+
+# ── PATHS ─────────────────────────────────────────────────────────────────────
+
+paths:
+
+  # ── Auth / User ───────────────────────────────────────
+  /auth/me:
+    get:
+      summary: Get current user
+      tags: [Auth]
+      responses:
+        "200":
+          description: Current user
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/User' }
+        "401": { description: Unauthenticated }
+    delete:
+      summary: Delete account and all user data (GDPR right to erasure)
+      tags: [Auth]
+      description: |
+        Permanently deletes: user record, all simulations, all reports,
+        all API keys, all alert subscriptions, Stripe subscription (cancels),
+        Clerk account. This action is irreversible.
+      responses:
+        "204": { description: Account deleted }
+        "400":
+          description: Active subscription must be cancelled first
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /auth/sync:
+    post:
+      summary: Sync Clerk user to local DB (called after first login)
+      tags: [Auth]
+      security: [{ ClerkJWT: [] }]
+      responses:
+        "200":
+          description: User synced
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/User' }
+
+  # ── Vessels ───────────────────────────────────────────
+  /vessels:
+    get:
+      summary: Get current vessel positions (live map)
+      tags: [Vessels]
+      parameters:
+        - name: bbox
+          in: query
+          description: "Bounding box: min_lng,min_lat,max_lng,max_lat"
+          schema: { type: string, example: "-10,35,40,60" }
+        - name: vessel_type
+          in: query
+          schema: { type: string, enum: [tanker, bulk_carrier, container, lng_carrier] }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 500, maximum: 5000 }
+      responses:
+        "200":
+          description: Vessel positions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/VesselPosition' }
+                  meta: { $ref: '#/components/schemas/Meta' }
+
+  /vessels/{mmsi}/trail:
+    get:
+      summary: Get vessel trail (last N hours)
+      tags: [Vessels]
+      parameters:
+        - name: mmsi
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: hours
+          in: query
+          schema: { type: integer, default: 24, maximum: 168 }
+      responses:
+        "200":
+          description: Vessel trail positions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/VesselPosition' }
+
+  # ── Commodities ───────────────────────────────────────
+  /commodities/prices:
+    get:
+      summary: Get latest commodity prices
+      tags: [Commodities]
+      parameters:
+        - name: commodities
+          in: query
+          description: "Comma-separated list e.g. crude_oil,coal,copper"
+          schema: { type: string }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/CommodityPrice' }
+
+  /commodities/prices/{commodity}/history:
+    get:
+      summary: Get price history for a commodity
+      tags: [Commodities]
+      parameters:
+        - name: commodity
+          in: path
+          required: true
+          schema: { type: string }
+        - name: benchmark
+          in: query
+          schema: { type: string }
+        - name: from
+          in: query
+          schema: { type: string, format: date }
+        - name: to
+          in: query
+          schema: { type: string, format: date }
+        - name: interval
+          in: query
+          schema: { type: string, enum: [1h, 1d, 1w, 1mo], default: 1d }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        time:  { type: string, format: date-time }
+                        price: { type: number }
+                        volume:{ type: number, nullable: true }
+
+  /commodities/flows:
+    get:
+      summary: Get trade flows as GeoJSON for map rendering
+      tags: [Commodities]
+      parameters:
+        - name: commodity
+          in: query
+          required: true
+          schema: { type: string }
+        - name: min_volume_mt
+          in: query
+          schema: { type: number, default: 1000000 }
+      responses:
+        "200":
+          description: GeoJSON FeatureCollection of LineStrings
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  type: { type: string, example: "FeatureCollection" }
+                  features:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        type:       { type: string, example: "Feature" }
+                        geometry:   { type: object }
+                        properties: { type: object }
+
+  # ── Alerts ────────────────────────────────────────────
+  /alerts:
+    get:
+      summary: Get alert feed
+      tags: [Alerts]
+      parameters:
+        - name: type
+          in: query
+          schema: { type: string }
+        - name: severity
+          in: query
+          schema: { type: string, enum: [info, warning, critical] }
+        - name: commodity
+          in: query
+          schema: { type: string }
+        - name: since
+          in: query
+          schema: { type: string, format: date-time }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 50, maximum: 200 }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Alert' }
+                  meta: { $ref: '#/components/schemas/Meta' }
+
+  /alerts/stream:
+    get:
+      summary: SSE stream of real-time alerts
+      tags: [Alerts]
+      description: Server-Sent Events. Client reconnects automatically.
+      responses:
+        "200":
+          description: SSE stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+
+  # ── Bottlenecks ───────────────────────────────────────
+  /bottlenecks:
+    get:
+      summary: Get all bottleneck nodes with current risk status
+      tags: [Bottlenecks]
+      parameters:
+        - name: commodity
+          in: query
+          schema: { type: string }
+        - name: min_risk
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 10 }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/BottleneckNode' }
+
+  /bottlenecks/{slug}:
+    get:
+      summary: Get bottleneck node detail with dependency graph
+      tags: [Bottlenecks]
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema: { type: string, example: port_newcastle_au }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    allOf:
+                      - $ref: '#/components/schemas/BottleneckNode'
+                      - type: object
+                        properties:
+                          incident_history:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                date:   { type: string, format: date }
+                                title:  { type: string }
+                                impact: { type: string }
+                          dependents:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                country:   { type: string }
+                                volume_mt: { type: number }
+
+  # ── Simulations ───────────────────────────────────────
+  /simulations:
+    get:
+      summary: List user's simulations
+      tags: [Simulations]
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer, default: 1 }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 20 }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Simulation' }
+                  meta: { $ref: '#/components/schemas/Meta' }
+
+    post:
+      summary: Create and queue a new simulation
+      tags: [Simulations]
+      description: |
+        Requires Pro plan or higher. Returns immediately with job_id.
+        Poll GET /simulations/{id} for status or use SSE stream.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SimulationParameters' }
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/Simulation' }
+        "403":
+          description: Plan limit reached
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /simulations/{id}:
+    get:
+      summary: Get simulation status and result
+      tags: [Simulations]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/Simulation' }
+        "404": { description: Not found }
+
+  /simulations/{id}/stream:
+    get:
+      summary: SSE stream of simulation progress
+      tags: [Simulations]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: SSE stream with progress updates
+          content:
+            text/event-stream:
+              schema: { type: string }
+
+  # ── Reports ───────────────────────────────────────────
+  /reports:
+    get:
+      summary: List user's reports
+      tags: [Reports]
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:         { type: string, format: uuid }
+                        title:      { type: string }
+                        status:     { type: string }
+                        pdf_url:    { type: string, nullable: true }
+                        share_token:{ type: string, nullable: true }
+                        created_at: { type: string, format: date-time }
+
+    post:
+      summary: Generate PDF report from simulation
+      tags: [Reports]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [simulation_id]
+              properties:
+                simulation_id: { type: string, format: uuid }
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:     { type: string, format: uuid }
+                      status: { type: string, example: generating }
+
+  /reports/{id}/share:
+    post:
+      summary: Create shareable link for report
+      tags: [Reports]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                expires_days: { type: integer, default: 30, maximum: 90 }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  share_url: { type: string }
+                  expires_at:{ type: string, format: date-time }
+
+  # ── Billing ───────────────────────────────────────────
+  /billing/checkout:
+    post:
+      summary: Create Stripe Checkout session for plan upgrade
+      tags: [Billing]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [plan]
+              properties:
+                plan:        { $ref: '#/components/schemas/Plan' }
+                success_url: { type: string, format: uri }
+                cancel_url:  { type: string, format: uri }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  checkout_url: { type: string, format: uri }
+
+  /billing/portal:
+    post:
+      summary: Create Stripe Customer Portal session (manage subscription)
+      tags: [Billing]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                return_url: { type: string, format: uri }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  portal_url: { type: string, format: uri }
+
+  # ── API Keys ──────────────────────────────────────────
+  /api-keys:
+    get:
+      summary: List user's API keys
+      tags: [API Keys]
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/ApiKey' }
+
+    post:
+      summary: Create new API key
+      tags: [API Keys]
+      description: Requires Pro plan. Key is shown ONCE — store it securely.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:        { type: string, maxLength: 64 }
+                expires_days:{ type: integer, nullable: true }
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/ApiKeyCreated' }
+        "403":
+          description: Plan does not include API access
+
+  /api-keys/{id}:
+    delete:
+      summary: Revoke API key
+      tags: [API Keys]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "204": { description: Key revoked }
+
+  # ── Ports ─────────────────────────────────────────────
+  /ports:
+    get:
+      summary: Get ports (for map rendering)
+      tags: [Ports]
+      parameters:
+        - name: bbox
+          in: query
+          schema: { type: string }
+        - name: is_major
+          in: query
+          schema: { type: boolean }
+        - name: commodity
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:          { type: string, format: uuid }
+                        name:        { type: string }
+                        country_code:{ type: string }
+                        latitude:    { type: number }
+                        longitude:   { type: number }
+                        commodities: { type: array, items: { type: string } }
+                        is_major:    { type: boolean }
+                        is_chokepoint:{ type: boolean }
+
+
+  # ── Alert Subscriptions ───────────────────────────────
+  /alert-subscriptions:
+    get:
+      summary: List user alert subscriptions
+      tags: [Alerts]
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:           { type: string, format: uuid }
+                        commodity:    { type: string, nullable: true }
+                        alert_type:   { type: string, nullable: true }
+                        min_severity: { type: string }
+                        notify_email: { type: boolean }
+                        notify_webhook: { type: boolean }
+                        webhook_url:  { type: string, nullable: true }
+    post:
+      summary: Create or update alert subscription
+      tags: [Alerts]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                commodity:    { type: string, nullable: true, description: "null = all commodities" }
+                alert_type:   { type: string, nullable: true, description: "null = all types" }
+                min_severity: { type: string, enum: [info, warning, critical], default: warning }
+                notify_email: { type: boolean, default: true }
+                notify_webhook: { type: boolean, default: false }
+                webhook_url:  { type: string, format: uri, nullable: true }
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: object }
+
+  /alert-subscriptions/{id}:
+    delete:
+      summary: Delete alert subscription
+      tags: [Alerts]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "204": { description: Deleted }
+
+  # ── Vessel detail ─────────────────────────────────────
+  /vessels/{mmsi}:
+    get:
+      summary: Get full vessel details by MMSI
+      tags: [Vessels]
+      parameters:
+        - name: mmsi
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    allOf:
+                      - $ref: "#/components/schemas/VesselPosition"
+                      - type: object
+                        properties:
+                          imo:               { type: integer, nullable: true }
+                          vessel_name:       { type: string, nullable: true }
+                          flag_country:      { type: string, nullable: true }
+                          cargo_type:        { type: string, nullable: true }
+                          draught:           { type: number, nullable: true }
+                          destination:       { type: string, nullable: true }
+                          eta:               { type: string, format: date-time, nullable: true }
+        "404": { description: Vessel not found in last 2 hours }
+
+  # ── Chokepoint status ─────────────────────────────────
+  /bottlenecks/{slug}/status:
+    get:
+      summary: Get real-time congestion status for a bottleneck node
+      tags: [Bottlenecks]
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema: { type: string, example: strait_hormuz }
+        - name: history_days
+          in: query
+          schema: { type: integer, default: 7, maximum: 30 }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      current:
+                        type: object
+                        properties:
+                          vessel_count:     { type: integer }
+                          avg_speed_knots:  { type: number, nullable: true }
+                          congestion_index: { type: number, description: "0-10 score" }
+                          risk_level:       { type: string, enum: [normal, elevated, high, critical] }
+                          updated_at:       { type: string, format: date-time }
+                      history:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            time:             { type: string, format: date-time }
+                            vessel_count:     { type: integer }
+                            congestion_index: { type: number }
+                            risk_level:       { type: string }
+
+  # ── Health check (public) ─────────────────────────────
+  /health:
+    get:
+      summary: Health check — returns status of db and redis
+      tags: [Health]
+      security: []
+      description: Public endpoint. Used by docker-compose healthcheck and uptime monitors.
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:  { type: string, example: ok }
+                  db:      { type: string, example: ok }
+                  redis:   { type: string, example: ok }
+                  version: { type: string, example: "1.0.0" }
+        "503":
+          description: One or more dependencies unhealthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: degraded }
+                  db:     { type: string, example: error }
+                  redis:  { type: string, example: ok }
+
+  # ── Webhooks (no auth — Stripe signature verification instead) ──
+  /webhooks/stripe:
+    post:
+      summary: Stripe webhook receiver
+      tags: [Webhooks]
+      security: []
+      description: |
+        No JWT auth. Stripe-Signature header is verified instead.
+        Handle: checkout.session.completed, invoice.payment_failed,
+        customer.subscription.deleted, customer.subscription.updated
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        "200": { description: OK }
+        "400": { description: Invalid signature }
+
+tags:
+  - name: Health
+  - name: Auth
+  - name: Vessels
+  - name: Commodities
+  - name: Alerts
+  - name: Bottlenecks
+  - name: Simulations
+  - name: Reports
+  - name: Billing
+  - name: API Keys
+  - name: Ports
+  - name: Webhooks
