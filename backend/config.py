@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     CLERK_PUBLISHABLE_KEY: str = ""
     STRIPE_SECRET_KEY: str = ""
     STRIPE_WEBHOOK_SECRET: str = ""
-    MAPBOX_ACCESS_TOKEN: str = ""
+    CLERK_JWKS_URL: str = ""  # Override auto-derived JWKS URL if needed
     AISSTREAM_API_KEY: str = ""
     EIA_API_KEY: str = ""
     COMTRADE_API_KEY: str = ""
@@ -23,7 +23,9 @@ class Settings(BaseSettings):
 
     CORS_ORIGINS: list[str] = ["http://localhost:5173"]
 
-    PUBLIC_ENDPOINTS: list[str] = ["/health", "/docs", "/openapi.json"]
+    SENTRY_DSN: str = ""
+
+    PUBLIC_ENDPOINTS: list[str] = ["/health", "/docs", "/openapi.json", "/api/v1/auth/sync"]
 
     model_config = {"env_file": ".env", "extra": "ignore"}
 

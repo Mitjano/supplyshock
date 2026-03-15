@@ -5,6 +5,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from config import settings
+from api.v1.auth import router as auth_router
 
 app = FastAPI(
     title="SupplyShock API",
@@ -43,3 +44,7 @@ async def health_check():
 
     status = "ok" if db_status == "ok" and redis_status == "ok" else "degraded"
     return {"status": status, "db": db_status, "redis": redis_status}
+
+
+# ── API v1 routers ──
+app.include_router(auth_router, prefix="/api/v1")
