@@ -1,0 +1,86 @@
+{
+  "nav": {
+    "home": "Panel",
+    "map": "Mapa na żywo",
+    "commodities": "Surowce",
+    "bottlenecks": "Wąskie gardła",
+    "alerts": "Alerty",
+    "fleet": "Flota",
+    "simulations": "Symulacje",
+    "reports": "Raporty",
+    "settings": "Ustawienia"
+  },
+  "layout": {
+    "overview": "PRZEGLĄD",
+    "markets": "RYNKI",
+    "intelligence": "WYWIAD",
+    "tools": "NARZĘDZIA",
+    "collapse": "Zwiń",
+    "signOut": "Wyloguj"
+  },
+  "common": {
+    "loading": "Ładowanie...",
+    "error": "Wystąpił błąd",
+    "retry": "Ponów",
+    "save": "Zapisz",
+    "cancel": "Anuluj",
+    "delete": "Usuń",
+    "search": "Szukaj...",
+    "noData": "Brak danych",
+    "lastUpdated": "Ostatnia aktualizacja",
+    "comingSoon": "Wkrótce"
+  },
+  "dashboard": {
+    "title": "Analiza łańcucha dostaw",
+    "welcome": "Witaj, {name}",
+    "activeAlerts": "Aktywne alerty",
+    "commodityPrices": "Ceny surowców",
+    "vesselTracking": "Śledzone statki",
+    "bottleneckStatus": "Status wąskich gardeł",
+    "commoditiesMonitored": "Monitorowane surowce",
+    "bottleneckRisk": "Ryzyko wąskich gardeł",
+    "recentAlerts": "Ostatnie alerty",
+    "topMovers": "Największe zmiany",
+    "viewAll": "Zobacz wszystko"
+  },
+  "commodities": {
+    "title": "Ceny surowców",
+    "energy": "Energia",
+    "metals": "Metale",
+    "agriculture": "Rolnictwo",
+    "price": "Cena",
+    "change": "Zmiana",
+    "volume": "Wolumen"
+  },
+  "alerts": {
+    "title": "Centrum alertow",
+    "all": "Wszystkie",
+    "critical": "Krytyczny",
+    "warning": "Ostrzezenie",
+    "info": "Informacja",
+    "severity": "Priorytet",
+    "type": "Typ",
+    "commodity": "Surowiec",
+    "timeRange": "Zakres czasu",
+    "allTypes": "Wszystkie typy",
+    "allCommodities": "Wszystkie surowce",
+    "severitySummary": "Podsumowanie priorytetow",
+    "trend24h": "Trend alertow (24h)",
+    "topAffected": "Najczesciej dotyczace surowce",
+    "topRegions": "Najczesciej dotyczace regiony",
+    "viewSource": "Zobacz zrodlo",
+    "noAlerts": "Brak aktywnych alertow",
+    "noAlertsTitle": "Nie znaleziono alertow",
+    "noAlertsDesc": "Brak alertow pasujacych do biezacych filtrow. Sprobuj zmienic priorytet, typ lub zakres czasu.",
+    "justNow": "Przed chwila",
+    "minutesAgo": "{n} min temu",
+    "hoursAgo": "{n} godz. temu",
+    "daysAgo": "{n} dni temu"
+  },
+  "map": {
+    "title": "Mapa statków na żywo",
+    "vessels": "Statki",
+    "ports": "Porty",
+    "tradeFlows": "Przepływy handlowe"
+  }
+}

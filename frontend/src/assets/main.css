@@ -1,0 +1,208 @@
+/* SupplyShock — Global Design Tokens & Base Styles */
+
+:root {
+  /* Background layers */
+  --ss-bg-base: #0f172a;
+  --ss-bg-surface: #1e293b;
+  --ss-bg-elevated: #334155;
+  --ss-bg-overlay: rgba(15, 23, 42, 0.85);
+
+  /* Text */
+  --ss-text-primary: #f1f5f9;
+  --ss-text-secondary: #94a3b8;
+  --ss-text-muted: #64748b;
+
+  /* Accent (teal/cyan) */
+  --ss-accent: #14b8a6;
+  --ss-accent-light: #2dd4bf;
+  --ss-accent-dim: rgba(20, 184, 166, 0.15);
+
+  /* Status */
+  --ss-danger: #ef4444;
+  --ss-warning: #f59e0b;
+  --ss-success: #22c55e;
+  --ss-info: #3b82f6;
+
+  /* Borders */
+  --ss-border: #1e293b;
+  --ss-border-light: #334155;
+
+  /* Sidebar */
+  --ss-sidebar-width: 240px;
+  --ss-sidebar-collapsed: 64px;
+
+  /* Transitions */
+  --ss-transition-fast: 150ms ease;
+  --ss-transition: 250ms ease;
+  --ss-transition-slow: 350ms ease;
+
+  /* Radius */
+  --ss-radius-sm: 6px;
+  --ss-radius: 8px;
+  --ss-radius-lg: 12px;
+
+  /* Shadows */
+  --ss-shadow: 0 1px 3px rgba(0, 0, 0, 0.3), 0 1px 2px rgba(0, 0, 0, 0.2);
+  --ss-shadow-lg: 0 10px 30px rgba(0, 0, 0, 0.4);
+}
+
+/* Reset */
+*,
+*::before,
+*::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html {
+  font-size: 16px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: var(--ss-bg-base);
+  color: var(--ss-text-primary);
+  line-height: 1.5;
+  overflow-x: hidden;
+}
+
+a {
+  color: var(--ss-accent);
+  text-decoration: none;
+}
+
+a:hover {
+  color: var(--ss-accent-light);
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--ss-bg-elevated);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--ss-text-muted);
+}
+
+/* Utility classes */
+.text-primary { color: var(--ss-text-primary); }
+.text-secondary { color: var(--ss-text-secondary); }
+.text-muted { color: var(--ss-text-muted); }
+.text-accent { color: var(--ss-accent); }
+.text-danger { color: var(--ss-danger); }
+.text-warning { color: var(--ss-warning); }
+.text-success { color: var(--ss-success); }
+
+.bg-surface { background: var(--ss-bg-surface); }
+.bg-elevated { background: var(--ss-bg-elevated); }
+
+/* View container base */
+.view-container {
+  padding: 1.5rem;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.view-container h1 {
+  font-size: 1.75rem;
+  font-weight: 700;
+  margin-bottom: 0.25rem;
+  color: var(--ss-text-primary);
+}
+
+/* Card */
+.ss-card {
+  background: var(--ss-bg-surface);
+  border: 1px solid var(--ss-border-light);
+  border-radius: var(--ss-radius-lg);
+  padding: 1.25rem;
+  transition: border-color var(--ss-transition-fast);
+}
+
+.ss-card:hover {
+  border-color: var(--ss-accent-dim);
+}
+
+/* KPI grid */
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+}
+
+/* Badge */
+.ss-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem 0.6rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+}
+
+.ss-badge--danger {
+  background: rgba(239, 68, 68, 0.15);
+  color: var(--ss-danger);
+}
+
+.ss-badge--warning {
+  background: rgba(245, 158, 11, 0.15);
+  color: var(--ss-warning);
+}
+
+.ss-badge--success {
+  background: rgba(34, 197, 94, 0.15);
+  color: var(--ss-success);
+}
+
+.ss-badge--info {
+  background: rgba(59, 130, 246, 0.15);
+  color: var(--ss-info);
+}
+
+.ss-badge--accent {
+  background: var(--ss-accent-dim);
+  color: var(--ss-accent);
+}
+
+/* Fade-in animation */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.fade-in {
+  animation: fadeIn var(--ss-transition) ease-out;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .view-container {
+    padding: 1rem;
+  }
+
+  .kpi-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 480px) {
+  .kpi-grid {
+    grid-template-columns: 1fr;
+  }
+}

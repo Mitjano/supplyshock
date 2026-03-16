@@ -1,0 +1,86 @@
+{
+  "nav": {
+    "home": "Dashboard",
+    "map": "Live Map",
+    "commodities": "Commodities",
+    "bottlenecks": "Bottlenecks",
+    "alerts": "Alerts",
+    "fleet": "Fleet",
+    "simulations": "Simulations",
+    "reports": "Reports",
+    "settings": "Settings"
+  },
+  "layout": {
+    "overview": "OVERVIEW",
+    "markets": "MARKETS",
+    "intelligence": "INTELLIGENCE",
+    "tools": "TOOLS",
+    "collapse": "Collapse",
+    "signOut": "Sign out"
+  },
+  "common": {
+    "loading": "Loading...",
+    "error": "An error occurred",
+    "retry": "Retry",
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "search": "Search...",
+    "noData": "No data available",
+    "lastUpdated": "Last updated",
+    "comingSoon": "Coming soon"
+  },
+  "dashboard": {
+    "title": "Supply Chain Intelligence",
+    "welcome": "Welcome back, {name}",
+    "activeAlerts": "Active Alerts",
+    "commodityPrices": "Commodity Prices",
+    "vesselTracking": "Vessels Tracked",
+    "bottleneckStatus": "Bottleneck Status",
+    "commoditiesMonitored": "Commodities Monitored",
+    "bottleneckRisk": "Bottleneck Risk",
+    "recentAlerts": "Recent Alerts",
+    "topMovers": "Top Movers",
+    "viewAll": "View all"
+  },
+  "commodities": {
+    "title": "Commodity Prices",
+    "energy": "Energy",
+    "metals": "Metals",
+    "agriculture": "Agriculture",
+    "price": "Price",
+    "change": "Change",
+    "volume": "Volume"
+  },
+  "alerts": {
+    "title": "Alert Center",
+    "all": "All",
+    "critical": "Critical",
+    "warning": "Warning",
+    "info": "Info",
+    "severity": "Severity",
+    "type": "Type",
+    "commodity": "Commodity",
+    "timeRange": "Time Range",
+    "allTypes": "All Types",
+    "allCommodities": "All Commodities",
+    "severitySummary": "Severity Summary",
+    "trend24h": "Alert Trend (24h)",
+    "topAffected": "Top Affected Commodities",
+    "topRegions": "Top Affected Regions",
+    "viewSource": "View Source",
+    "noAlerts": "No active alerts",
+    "noAlertsTitle": "No alerts found",
+    "noAlertsDesc": "There are no alerts matching your current filters. Try adjusting the severity, type, or time range.",
+    "justNow": "Just now",
+    "minutesAgo": "{n} min ago",
+    "hoursAgo": "{n}h ago",
+    "daysAgo": "{n}d ago"
+  },
+  "map": {
+    "title": "Live Vessel Map",
+    "vessels": "Vessels",
+    "ports": "Ports",
+    "tradeFlows": "Trade Flows"
+  }
+}
