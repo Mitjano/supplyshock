@@ -57,8 +57,8 @@ async def list_alerts(
 
     result = await db.execute(
         text(f"""
-            SELECT id, type, severity, commodity, title, description,
-                   source_url, metadata, time
+            SELECT id, type, severity, commodity, title, body,
+                   source, source_url, metadata, time
             FROM alert_events
             {where}
             ORDER BY time DESC
@@ -76,7 +76,8 @@ async def list_alerts(
                 "severity": row["severity"],
                 "commodity": row["commodity"],
                 "title": row["title"],
-                "description": row["description"],
+                "body": row["body"],
+                "source": row["source"],
                 "source_url": row["source_url"],
                 "metadata": row["metadata"],
                 "time": row["time"].isoformat(),

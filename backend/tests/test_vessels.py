@@ -31,7 +31,7 @@ def _make_vessel_row(
         "eta": datetime(2026, 4, 1, tzinfo=timezone.utc),
         "draught": 10.2,
         "flag_country": "NL",
-        "nav_status": 0,
+        "cargo_type": "70",
         "time": datetime(2026, 3, 15, 12, 0, 0, tzinfo=timezone.utc),
     }
 

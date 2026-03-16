@@ -44,11 +44,11 @@ async def get_latest_prices(
 
     result = await db.execute(
         text(f"""
-            SELECT DISTINCT ON (commodity)
-                commodity, price_usd, currency, source, time
+            SELECT DISTINCT ON (commodity, benchmark)
+                commodity, benchmark, price, currency, unit, source, time
             FROM commodity_prices
             {where}
-            ORDER BY commodity, time DESC
+            ORDER BY commodity, benchmark, time DESC
         """),
         params,
     )
@@ -58,8 +58,10 @@ async def get_latest_prices(
         "data": [
             {
                 "commodity": row["commodity"],
-                "price_usd": float(row["price_usd"]),
+                "benchmark": row["benchmark"],
+                "price": float(row["price"]),
                 "currency": row["currency"],
+                "unit": row["unit"],
                 "source": row["source"],
                 "time": row["time"].isoformat(),
             }
@@ -77,14 +79,14 @@ async def get_price_history(
 ):
     """Get price history for a specific commodity."""
     result = await db.execute(
-        text(f"""
-            SELECT commodity, price_usd, currency, source, time
+        text("""
+            SELECT commodity, benchmark, price, currency, unit, source, time
             FROM commodity_prices
             WHERE commodity = :commodity
-              AND time > NOW() - INTERVAL '{days} days'
+              AND time > NOW() - make_interval(days => :days)
             ORDER BY time ASC
         """),
-        {"commodity": commodity},
+        {"commodity": commodity, "days": days},
     )
     rows = result.mappings().all()
 
@@ -92,8 +94,10 @@ async def get_price_history(
         "data": [
             {
                 "commodity": row["commodity"],
-                "price_usd": float(row["price_usd"]),
+                "benchmark": row["benchmark"],
+                "price": float(row["price"]),
                 "currency": row["currency"],
+                "unit": row["unit"],
                 "source": row["source"],
                 "time": row["time"].isoformat(),
             }

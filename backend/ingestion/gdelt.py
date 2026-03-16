@@ -121,7 +121,8 @@ def fetch_gdelt_articles() -> list[dict]:
             "severity": severity,
             "commodity": commodity,
             "title": title[:500],
-            "description": f"Source: {article.get('domain', 'unknown')}",
+            "body": f"Source: {article.get('domain', 'unknown')}",
+            "source": "gdelt",
             "source_url": url,
             "metadata": json.dumps({"tone": tone, "domain": article.get("domain")}),
             "time": datetime.now(timezone.utc).isoformat(),
@@ -154,13 +155,13 @@ def ingest_gdelt_alerts():
                 cur.execute(
                     """
                     INSERT INTO alert_events (type, severity, commodity, title,
-                        description, source_url, metadata, time)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                        body, source, source_url, metadata, time)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                     """,
                     (
                         event["type"], event["severity"], event["commodity"],
-                        event["title"], event["description"], event["source_url"],
-                        event["metadata"], event["time"],
+                        event["title"], event["body"], event["source"],
+                        event["source_url"], event["metadata"], event["time"],
                     ),
                 )
                 inserted += 1

@@ -97,7 +97,7 @@ def _parse_position(msg: dict) -> dict | None:
             "destination": meta.get("Destination", "").strip() or None,
             "draught": meta.get("Draught"),
             "flag_country": meta.get("country"),
-            "nav_status": report.get("NavigationalStatus"),
+            "cargo_type": str(meta.get("ShipType")) if meta.get("ShipType") else None,
         }
     except Exception as e:
         logger.warning("Failed to parse AIS message: %s", e)
@@ -115,11 +115,11 @@ async def _flush_batch(session: AsyncSession, batch: list[dict]) -> int:
             INSERT INTO vessel_positions (
                 time, mmsi, imo, vessel_name, vessel_type,
                 latitude, longitude, speed_knots, course, heading,
-                destination, draught, flag_country, nav_status
+                destination, draught, flag_country, cargo_type
             ) VALUES (
                 :time, :mmsi, :imo, :vessel_name, :vessel_type,
                 :latitude, :longitude, :speed_knots, :course, :heading,
-                :destination, :draught, :flag_country, :nav_status
+                :destination, :draught, :flag_country, :cargo_type
             )
         """),
         batch,

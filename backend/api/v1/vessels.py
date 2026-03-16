@@ -126,7 +126,7 @@ async def get_vessel_detail(
         text("""
             SELECT mmsi, imo, vessel_name, vessel_type, latitude, longitude,
                    speed_knots, course, heading, destination, eta, draught,
-                   flag_country, nav_status, time
+                   flag_country, cargo_type, time
             FROM vessel_positions
             WHERE mmsi = :mmsi AND time > NOW() - INTERVAL '2 hours'
             ORDER BY time DESC
@@ -157,7 +157,7 @@ async def get_vessel_detail(
             "eta": row["eta"].isoformat() if row["eta"] else None,
             "draught": float(row["draught"]) if row["draught"] else None,
             "flag_country": row["flag_country"],
-            "nav_status": row["nav_status"],
+            "cargo_type": row["cargo_type"],
             "time": row["time"].isoformat(),
         }
     }
@@ -179,10 +179,10 @@ async def get_vessel_trail(
         text("""
             SELECT mmsi, latitude, longitude, speed_knots, course, time
             FROM vessel_positions
-            WHERE mmsi = :mmsi AND time > NOW() - INTERVAL ':hours hours'
+            WHERE mmsi = :mmsi AND time > NOW() - make_interval(hours => :hours)
             ORDER BY time ASC
-        """.replace(":hours hours", f"{hours} hours")),
-        {"mmsi": mmsi},
+        """),
+        {"mmsi": mmsi, "hours": hours},
     )
     rows = result.mappings().all()
 

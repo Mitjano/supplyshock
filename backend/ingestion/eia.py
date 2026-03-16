@@ -19,9 +19,9 @@ EIA_BASE_URL = "https://api.eia.gov/v2"
 
 # EIA series IDs for energy commodities
 EIA_SERIES = {
-    "crude_oil_wti": {"series": "PET.RWTC.D", "benchmark": "WTI", "commodity": "crude_oil"},
-    "crude_oil_brent": {"series": "PET.RBRTE.D", "benchmark": "Brent", "commodity": "crude_oil"},
-    "lng_henry_hub": {"series": "NG.RNGWHHD.D", "benchmark": "Henry Hub", "commodity": "lng"},
+    "crude_oil_wti": {"series": "PET.RWTC.D", "benchmark": "WTI", "commodity": "crude_oil", "unit": "barrel"},
+    "crude_oil_brent": {"series": "PET.RBRTE.D", "benchmark": "Brent", "commodity": "crude_oil", "unit": "barrel"},
+    "lng_henry_hub": {"series": "NG.RNGWHHD.D", "benchmark": "Henry Hub", "commodity": "lng", "unit": "mmbtu"},
 }
 
 
@@ -49,8 +49,9 @@ def fetch_eia_prices() -> list[dict]:
                 prices.append({
                     "commodity": config["commodity"],
                     "benchmark": config["benchmark"],
-                    "price_usd": float(latest.get("value", 0)),
+                    "price": float(latest.get("value", 0)),
                     "currency": "USD",
+                    "unit": config["unit"],
                     "source": "eia",
                     "time": datetime.now(timezone.utc).isoformat(),
                 })
@@ -67,10 +68,10 @@ def _fallback_eia_prices() -> list[dict]:
     """Fallback prices for development/demo without API key."""
     now = datetime.now(timezone.utc).isoformat()
     return [
-        {"commodity": "crude_oil", "benchmark": "WTI", "price_usd": 78.50, "currency": "USD", "source": "fallback", "time": now},
-        {"commodity": "crude_oil", "benchmark": "Brent", "price_usd": 82.30, "currency": "USD", "source": "fallback", "time": now},
-        {"commodity": "lng", "benchmark": "Henry Hub", "price_usd": 2.85, "currency": "USD", "source": "fallback", "time": now},
-        {"commodity": "coal", "benchmark": "API2", "price_usd": 115.00, "currency": "USD", "source": "fallback", "time": now},
+        {"commodity": "crude_oil", "benchmark": "WTI", "price": 78.50, "currency": "USD", "unit": "barrel", "source": "fallback", "time": now},
+        {"commodity": "crude_oil", "benchmark": "Brent", "price": 82.30, "currency": "USD", "unit": "barrel", "source": "fallback", "time": now},
+        {"commodity": "lng", "benchmark": "Henry Hub", "price": 2.85, "currency": "USD", "unit": "mmbtu", "source": "fallback", "time": now},
+        {"commodity": "coal", "benchmark": "API2", "price": 115.00, "currency": "USD", "unit": "tonne", "source": "fallback", "time": now},
     ]
 
 
@@ -84,14 +85,15 @@ def ingest_eia_prices():
     try:
         with conn.cursor() as cur:
             values = [
-                (p["time"], p["commodity"], p["benchmark"], p["price_usd"], p["currency"], p["source"])
+                (p["time"], p["commodity"], p["benchmark"], p["price"], p["currency"], p["unit"], p["source"])
                 for p in prices
             ]
             execute_values(
                 cur,
                 """
-                INSERT INTO commodity_prices (time, commodity, benchmark, price_usd, currency, source)
+                INSERT INTO commodity_prices (time, commodity, benchmark, price, currency, unit, source)
                 VALUES %s
+                ON CONFLICT DO NOTHING
                 """,
                 values,
             )

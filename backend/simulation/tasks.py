@@ -147,13 +147,14 @@ def detect_ais_anomalies():
                 threshold = mean_count + 2 * std_count
                 if vessel_count > threshold and vessel_count >= 10 and std_count > 0:
                     cur.execute("""
-                        INSERT INTO alert_events (type, severity, title, description,
-                            metadata, time)
+                        INSERT INTO alert_events (type, severity, title, body,
+                            source, metadata, time)
                         VALUES ('ais_anomaly', 'warning',
-                            %s, %s, %s, NOW())
+                            %s, %s, %s, %s, NOW())
                     """, (
                         f"Unusual vessel congestion at {name}",
                         f"{vessel_count} vessels detected (normal: {mean_count:.0f}±{std_count:.0f})",
+                        "ais_anomaly",
                         json.dumps({"node_slug": slug, "vessel_count": vessel_count,
                                     "threshold": threshold, "congestion_index": congestion}),
                     ))

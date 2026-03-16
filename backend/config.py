@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     CLERK_JWKS_URL: str = ""  # Override auto-derived JWKS URL if needed
     AISSTREAM_API_KEY: str = ""
     EIA_API_KEY: str = ""
+    NASDAQ_DATA_LINK_API_KEY: str = ""
     COMTRADE_API_KEY: str = ""
     CLAUDE_API_KEY: str = ""
     RESEND_API_KEY: str = ""

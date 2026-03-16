@@ -19,21 +19,21 @@ NASDAQ_BASE_URL = "https://data.nasdaq.com/api/v3/datasets"
 
 # Nasdaq Data Link dataset codes
 NASDAQ_SERIES = {
-    "copper": {"dataset": "LME/PR_CU", "benchmark": "LME", "commodity": "copper"},
-    "iron_ore": {"dataset": "ODA/PIORECR_USD", "benchmark": "TSI 62% Fe", "commodity": "iron_ore"},
-    "aluminium": {"dataset": "LME/PR_AL", "benchmark": "LME", "commodity": "aluminium"},
-    "nickel": {"dataset": "LME/PR_NI", "benchmark": "LME", "commodity": "nickel"},
-    "wheat": {"dataset": "CHRIS/CME_W1", "benchmark": "CME", "commodity": "wheat"},
-    "soybeans": {"dataset": "CHRIS/CME_S1", "benchmark": "CME", "commodity": "soybeans"},
+    "copper": {"dataset": "LME/PR_CU", "benchmark": "LME", "commodity": "copper", "unit": "tonne"},
+    "iron_ore": {"dataset": "ODA/PIORECR_USD", "benchmark": "TSI 62% Fe", "commodity": "iron_ore", "unit": "tonne"},
+    "aluminium": {"dataset": "LME/PR_AL", "benchmark": "LME", "commodity": "aluminium", "unit": "tonne"},
+    "nickel": {"dataset": "LME/PR_NI", "benchmark": "LME", "commodity": "nickel", "unit": "tonne"},
+    "wheat": {"dataset": "CHRIS/CME_W1", "benchmark": "CME", "commodity": "wheat", "unit": "bushel"},
+    "soybeans": {"dataset": "CHRIS/CME_S1", "benchmark": "CME", "commodity": "soybeans", "unit": "bushel"},
 }
 
 
 def fetch_nasdaq_prices() -> list[dict]:
     """Fetch latest prices from Nasdaq Data Link."""
-    api_key = getattr(settings, "NASDAQ_API_KEY", "") or getattr(settings, "COMTRADE_API_KEY", "")
+    api_key = settings.NASDAQ_DATA_LINK_API_KEY
 
     if not api_key:
-        logger.warning("NASDAQ_API_KEY not set — using fallback prices")
+        logger.warning("NASDAQ_DATA_LINK_API_KEY not set — using fallback prices")
         return _fallback_prices()
 
     prices = []
@@ -51,13 +51,17 @@ def fetch_nasdaq_prices() -> list[dict]:
             rows = dataset.get("data", [])
             if rows:
                 latest = rows[0]
-                # Price is usually in column 1 (after date in column 0)
+                # Price is in column 1 (after date in column 0)
                 price = float(latest[1]) if len(latest) > 1 else 0
+                if price <= 0:
+                    logger.warning("Invalid price for %s: %s", key, latest)
+                    continue
                 prices.append({
                     "commodity": config["commodity"],
                     "benchmark": config["benchmark"],
-                    "price_usd": price,
+                    "price": price,
                     "currency": "USD",
+                    "unit": config["unit"],
                     "source": "nasdaq_data_link",
                     "time": datetime.now(timezone.utc).isoformat(),
                 })
@@ -74,12 +78,12 @@ def _fallback_prices() -> list[dict]:
     """Fallback prices for development/demo."""
     now = datetime.now(timezone.utc).isoformat()
     return [
-        {"commodity": "copper", "benchmark": "LME", "price_usd": 8950.00, "currency": "USD", "source": "fallback", "time": now},
-        {"commodity": "iron_ore", "benchmark": "TSI 62% Fe", "price_usd": 108.50, "currency": "USD", "source": "fallback", "time": now},
-        {"commodity": "aluminium", "benchmark": "LME", "price_usd": 2380.00, "currency": "USD", "source": "fallback", "time": now},
-        {"commodity": "nickel", "benchmark": "LME", "price_usd": 16200.00, "currency": "USD", "source": "fallback", "time": now},
-        {"commodity": "wheat", "benchmark": "CME", "price_usd": 5.82, "currency": "USD", "source": "fallback", "time": now},
-        {"commodity": "soybeans", "benchmark": "CME", "price_usd": 11.45, "currency": "USD", "source": "fallback", "time": now},
+        {"commodity": "copper", "benchmark": "LME", "price": 8950.00, "currency": "USD", "unit": "tonne", "source": "fallback", "time": now},
+        {"commodity": "iron_ore", "benchmark": "TSI 62% Fe", "price": 108.50, "currency": "USD", "unit": "tonne", "source": "fallback", "time": now},
+        {"commodity": "aluminium", "benchmark": "LME", "price": 2380.00, "currency": "USD", "unit": "tonne", "source": "fallback", "time": now},
+        {"commodity": "nickel", "benchmark": "LME", "price": 16200.00, "currency": "USD", "unit": "tonne", "source": "fallback", "time": now},
+        {"commodity": "wheat", "benchmark": "CME", "price": 5.82, "currency": "USD", "unit": "bushel", "source": "fallback", "time": now},
+        {"commodity": "soybeans", "benchmark": "CME", "price": 11.45, "currency": "USD", "unit": "bushel", "source": "fallback", "time": now},
     ]
 
 
@@ -93,14 +97,15 @@ def ingest_nasdaq_prices():
     try:
         with conn.cursor() as cur:
             values = [
-                (p["time"], p["commodity"], p["benchmark"], p["price_usd"], p["currency"], p["source"])
+                (p["time"], p["commodity"], p["benchmark"], p["price"], p["currency"], p["unit"], p["source"])
                 for p in prices
             ]
             execute_values(
                 cur,
                 """
-                INSERT INTO commodity_prices (time, commodity, benchmark, price_usd, currency, source)
+                INSERT INTO commodity_prices (time, commodity, benchmark, price, currency, unit, source)
                 VALUES %s
+                ON CONFLICT DO NOTHING
                 """,
                 values,
             )
