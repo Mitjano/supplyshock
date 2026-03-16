@@ -10,18 +10,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from dependencies import get_db
 from middleware.auth import require_auth
+from middleware.rate_limit import check_api_rate_limit
 
 router = APIRouter(prefix="/ports", tags=["Ports"])
-
-
-async def _get_db():
-    from main import engine
-    from sqlalchemy.ext.asyncio import async_sessionmaker
-
-    async_session = async_sessionmaker(engine, expire_on_commit=False)
-    async with async_session() as session:
-        yield session
 
 
 @router.get("")
@@ -29,9 +22,10 @@ async def list_ports(
     bbox: str | None = Query(None, description="min_lng,min_lat,max_lng,max_lat"),
     is_major: bool | None = Query(None),
     commodity: str | None = Query(None, description="Filter by commodity in commodities array"),
+    offset: int = Query(0, ge=0),
     limit: int = Query(500, le=5000),
-    user: dict[str, Any] = Depends(require_auth),
-    db: AsyncSession = Depends(_get_db),
+    user: dict[str, Any] = Depends(check_api_rate_limit),
+    db: AsyncSession = Depends(get_db),
 ):
     """List ports with optional filters."""
     conditions = []
@@ -59,6 +53,15 @@ async def list_ports(
 
     where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
 
+    params["offset"] = offset
+
+    # Get total count
+    count_result = await db.execute(
+        text(f"SELECT COUNT(*) FROM ports {where}"),
+        params,
+    )
+    total = count_result.scalar()
+
     result = await db.execute(
         text(f"""
             SELECT id, wpi_number, name, country_code, latitude, longitude,
@@ -67,7 +70,7 @@ async def list_ports(
             FROM ports
             {where}
             ORDER BY is_major DESC, name ASC
-            LIMIT :limit
+            LIMIT :limit OFFSET :offset
         """),
         params,
     )
@@ -91,5 +94,5 @@ async def list_ports(
             }
             for row in rows
         ],
-        "meta": {"total": len(rows), "limit": limit},
+        "meta": {"total": total, "offset": offset, "limit": limit},
     }

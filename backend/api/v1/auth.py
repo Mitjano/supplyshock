@@ -10,26 +10,17 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from dependencies import get_db
 from middleware.auth import require_auth
+from middleware.rate_limit import check_api_rate_limit
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
 
 
-async def _get_db():
-    """Yield an async DB session. Imported from main to avoid circular deps."""
-    from main import engine
-
-    from sqlalchemy.ext.asyncio import async_sessionmaker
-
-    async_session = async_sessionmaker(engine, expire_on_commit=False)
-    async with async_session() as session:
-        yield session
-
-
 @router.get("/me")
 async def get_me(
-    user: dict[str, Any] = Depends(require_auth),
-    db: AsyncSession = Depends(_get_db),
+    user: dict[str, Any] = Depends(check_api_rate_limit),
+    db: AsyncSession = Depends(get_db),
 ):
     """Return the current user's profile from local DB.
 
@@ -81,7 +72,7 @@ async def get_me(
 @router.post("/sync", status_code=200)
 async def sync_user(
     user: dict[str, Any] = Depends(require_auth),
-    db: AsyncSession = Depends(_get_db),
+    db: AsyncSession = Depends(get_db),
 ):
     """Create or update user in local DB from Clerk JWT payload.
 

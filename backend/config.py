@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     RESEND_API_KEY: str = ""
     ZEP_API_KEY: str = ""
 
+    FRONTEND_URL: str = "http://localhost:5173"
     CORS_ORIGINS: list[str] = ["http://localhost:5173"]
 
     SENTRY_DSN: str = ""

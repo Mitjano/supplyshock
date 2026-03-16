@@ -2,6 +2,11 @@
 
 Polls GDELT GKG API every 15 minutes, classifies events by commodity and severity,
 deduplicates by source_url, and inserts into alert_events table.
+
+NOTE: This module requires a unique index on alert_events.source_url for proper
+ON CONFLICT dedup. Add via migration:
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_alert_events_source_url
+    ON alert_events (source_url) WHERE source_url IS NOT NULL;
 """
 
 import json
@@ -26,6 +31,11 @@ COMMODITY_KEYWORDS = {
     "iron_ore": ["iron ore", "steel production", "iron ore price", "mining"],
     "copper": ["copper price", "copper mine", "copper supply", "copper shortage"],
     "lng": ["LNG", "natural gas", "gas pipeline", "gas supply", "liquefied natural gas"],
+    "wheat": ["wheat price", "wheat export", "wheat supply", "grain shortage", "wheat harvest", "wheat shipment"],
+    "soybeans": ["soybean price", "soybeans export", "soybean supply", "soybean harvest", "soybean shipment"],
+    "aluminium": ["aluminium price", "aluminum price", "aluminium supply", "aluminum supply", "aluminium smelter", "aluminum smelter"],
+    "nickel": ["nickel price", "nickel mine", "nickel supply", "nickel shortage"],
+    "palladium": ["palladium price", "palladium supply", "palladium shortage", "PGM supply"],
 }
 
 # Regions/locations that indicate supply chain relevance
@@ -36,7 +46,7 @@ SUPPLY_CHAIN_KEYWORDS = [
     "explosion", "earthquake", "hurricane", "typhoon", "flood",
 ]
 
-# GDELT tone score → severity mapping
+# GDELT tone score -> severity mapping
 # tone < -5 = critical, -5 to -2 = warning, > -2 = info
 TONE_THRESHOLDS = {"critical": -5.0, "warning": -2.0}
 
@@ -77,6 +87,11 @@ def fetch_gdelt_articles() -> list[dict]:
         "commodity disruption",
         "port closure",
         "supply chain crisis",
+        "wheat export",
+        "soybean shipment",
+        "aluminium supply",
+        "nickel shortage",
+        "palladium supply",
     ])
 
     try:
@@ -132,7 +147,7 @@ def fetch_gdelt_articles() -> list[dict]:
 
 
 def ingest_gdelt_alerts():
-    """Fetch GDELT articles and insert new alerts (dedup by source_url)."""
+    """Fetch GDELT articles and insert new alerts (dedup by source_url via ON CONFLICT)."""
     events = fetch_gdelt_articles()
     if not events:
         logger.info("No new GDELT events found")
@@ -143,20 +158,27 @@ def ingest_gdelt_alerts():
 
     try:
         with conn.cursor() as cur:
-            for event in events:
-                # Dedup: skip if source_url already exists
-                cur.execute(
-                    "SELECT 1 FROM alert_events WHERE source_url = %s LIMIT 1",
-                    (event["source_url"],),
+            # Use INSERT ... ON CONFLICT for atomic dedup instead of SELECT-then-INSERT.
+            # Requires unique index on source_url (see module docstring).
+            values = [
+                (
+                    event["type"], event["severity"], event["commodity"],
+                    event["title"], event["body"], event["source"],
+                    event["source_url"], event["metadata"], event["time"],
                 )
-                if cur.fetchone():
-                    continue
+                for event in events
+            ]
 
+            # Use execute_values with ON CONFLICT to get actually inserted rows
+            cur.execute("BEGIN")
+            for event in events:
                 cur.execute(
                     """
                     INSERT INTO alert_events (type, severity, commodity, title,
                         body, source, source_url, metadata, time)
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (source_url) DO NOTHING
+                    RETURNING id
                     """,
                     (
                         event["type"], event["severity"], event["commodity"],
@@ -164,16 +186,19 @@ def ingest_gdelt_alerts():
                         event["source_url"], event["metadata"], event["time"],
                     ),
                 )
-                inserted += 1
+                if cur.fetchone() is not None:
+                    event["_inserted"] = True
+                    inserted += 1
 
         conn.commit()
         logger.info("Inserted %d new GDELT alerts (of %d fetched)", inserted, len(events))
     finally:
         conn.close()
 
-    # Publish to Redis for SSE clients
+    # Publish only actually inserted events to Redis for SSE clients
     if inserted > 0:
-        _publish_alerts(events[:inserted])
+        actually_inserted = [e for e in events if e.get("_inserted")]
+        _publish_alerts(actually_inserted)
 
     return inserted
 
@@ -185,7 +210,9 @@ def _publish_alerts(events: list[dict]):
     try:
         r = sync_redis.from_url(settings.REDIS_URL)
         for event in events:
-            r.publish("alerts", json.dumps(event))
+            # Remove internal tracking key before publishing
+            payload = {k: v for k, v in event.items() if not k.startswith("_")}
+            r.publish("alerts", json.dumps(payload))
         r.close()
     except Exception as e:
         logger.warning("Failed to publish alerts to Redis: %s", e)

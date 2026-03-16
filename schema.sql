@@ -15,6 +15,7 @@
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 CREATE EXTENSION IF NOT EXISTS "timescaledb";
 CREATE EXTENSION IF NOT EXISTS "pg_trgm";  -- for text search on vessel names
+CREATE EXTENSION IF NOT EXISTS "postgis";  -- for port geofencing (Issue #40)
 
 -- ============================================================
 -- ENUMS
@@ -24,10 +25,11 @@ CREATE TYPE plan_type AS ENUM ('free', 'pro', 'business', 'enterprise');
 CREATE TYPE subscription_status AS ENUM ('active', 'past_due', 'canceled', 'trialing');
 CREATE TYPE simulation_status AS ENUM ('queued', 'running', 'completed', 'failed', 'timeout');
 CREATE TYPE alert_severity AS ENUM ('info', 'warning', 'critical');
-CREATE TYPE alert_type AS ENUM ('ais_anomaly', 'price_move', 'news_event', 'port_congestion', 'geopolitical');
-CREATE TYPE commodity_type AS ENUM ('crude_oil', 'lng', 'coal', 'iron_ore', 'copper', 'wheat', 'soybeans', 'aluminium', 'nickel', 'palladium');
 CREATE TYPE vessel_type AS ENUM ('tanker', 'bulk_carrier', 'container', 'lng_carrier', 'general_cargo', 'other');
 CREATE TYPE report_status AS ENUM ('generating', 'ready', 'failed');
+
+-- alert_type and commodity_type use TEXT + CHECK instead of ENUM
+-- so new values can be added without ALTER TYPE ... ADD VALUE migrations.
 
 -- ============================================================
 -- USERS & AUTH
@@ -138,7 +140,14 @@ CREATE INDEX idx_ports_coords ON ports USING GIST (
 
 CREATE TABLE trade_flows (
     id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    commodity           commodity_type NOT NULL,
+    commodity           TEXT NOT NULL CONSTRAINT chk_commodity_type CHECK (commodity IN (
+                            'crude_oil','lng','coal','iron_ore','copper','wheat','soybeans','aluminium','nickel','palladium',
+                            'gold','silver','platinum','zinc','tin','lead','natural_gas','gasoline','heating_oil','diesel',
+                            'jet_fuel','naphtha','ethanol','corn','rice','barley','oats','canola','palm_oil','sugar','coffee','cocoa',
+                            'cotton','rubber','lumber','urea','potash','phosphate','dap',
+                            'carbon_eu_ets','carbon_uk_ets','carbon_cca','carbon_rggi',
+                            'brent','wti','urals','dubai','oman'
+                        )),
     origin_country      TEXT NOT NULL,      -- ISO 3166-1 alpha-2
     destination_country TEXT NOT NULL,
     origin_port_id      UUID REFERENCES ports(id),
@@ -208,7 +217,14 @@ CREATE INDEX idx_vp_coords ON vessel_positions(longitude, latitude, time DESC);
 
 CREATE TABLE commodity_prices (
     time        TIMESTAMPTZ NOT NULL,
-    commodity   commodity_type NOT NULL,
+    commodity   TEXT NOT NULL CONSTRAINT chk_commodity_type CHECK (commodity IN (
+                    'crude_oil','lng','coal','iron_ore','copper','wheat','soybeans','aluminium','nickel','palladium',
+                    'gold','silver','platinum','zinc','tin','lead','natural_gas','gasoline','heating_oil','diesel',
+                    'jet_fuel','naphtha','ethanol','corn','rice','barley','oats','canola','palm_oil','sugar','coffee','cocoa',
+                    'cotton','rubber','lumber','urea','potash','phosphate','dap',
+                    'carbon_eu_ets','carbon_uk_ets','carbon_cca','carbon_rggi',
+                    'brent','wti','urals','dubai','oman'
+                )),
     benchmark   TEXT NOT NULL,              -- e.g. 'BRENT', 'API2', 'LME_COPPER'
     price       DECIMAL(14,4) NOT NULL,
     currency    CHAR(3) NOT NULL DEFAULT 'USD',
@@ -220,8 +236,7 @@ CREATE TABLE commodity_prices (
 SELECT create_hypertable('commodity_prices', 'time',
     chunk_time_interval => INTERVAL '1 month');
 
-SELECT add_retention_policy('commodity_prices',
-    INTERVAL '5 years');
+-- No retention policy: keep commodity prices forever (small volume, high analytical value)
 
 ALTER TABLE commodity_prices SET (
     timescaledb.compress,
@@ -240,11 +255,26 @@ CREATE INDEX idx_cp_commodity_time ON commodity_prices(commodity, time DESC);
 CREATE TABLE alert_events (
     id          UUID NOT NULL DEFAULT gen_random_uuid(),
     time        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    type        alert_type NOT NULL,
+    type        TEXT NOT NULL CONSTRAINT chk_alert_type CHECK (type IN (
+                    'ais_anomaly','price_move','news_event','port_congestion','geopolitical',
+                    'vessel_dark','vessel_speed_anomaly','vessel_route_deviation','vessel_ais_gap',
+                    'vessel_draught_change','vessel_zone_entry','vessel_zone_exit','vessel_loitering',
+                    'vessel_sts_transfer','vessel_flag_change','vessel_name_change','vessel_spoofing',
+                    'price_spike','price_crash','price_cross_ma','spread_anomaly','forward_curve_shift',
+                    'inventory_draw','inventory_build','supply_disruption','demand_shock',
+                    'sanctions_alert','weather_event'
+                )),
     severity    alert_severity NOT NULL,
     title       TEXT NOT NULL,
     body        TEXT,
-    commodity   commodity_type,             -- NULL if not commodity-specific
+    commodity   TEXT CONSTRAINT chk_commodity_type CHECK (commodity IS NULL OR commodity IN (
+                    'crude_oil','lng','coal','iron_ore','copper','wheat','soybeans','aluminium','nickel','palladium',
+                    'gold','silver','platinum','zinc','tin','lead','natural_gas','gasoline','heating_oil','diesel',
+                    'jet_fuel','naphtha','ethanol','corn','rice','barley','oats','canola','palm_oil','sugar','coffee','cocoa',
+                    'cotton','rubber','lumber','urea','potash','phosphate','dap',
+                    'carbon_eu_ets','carbon_uk_ets','carbon_cca','carbon_rggi',
+                    'brent','wti','urals','dubai','oman'
+                )),             -- NULL if not commodity-specific
     region      TEXT,                       -- affected region/country
     port_id     UUID REFERENCES ports(id),
     mmsi        BIGINT,                     -- if AIS-related
@@ -333,8 +363,23 @@ CREATE INDEX idx_reports_share ON reports(share_token) WHERE share_token IS NOT 
 CREATE TABLE user_alert_subscriptions (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    commodity       commodity_type,         -- NULL = all commodities
-    alert_type      alert_type,             -- NULL = all types
+    commodity       TEXT CONSTRAINT chk_commodity_type CHECK (commodity IS NULL OR commodity IN (
+                        'crude_oil','lng','coal','iron_ore','copper','wheat','soybeans','aluminium','nickel','palladium',
+                        'gold','silver','platinum','zinc','tin','lead','natural_gas','gasoline','heating_oil','diesel',
+                        'jet_fuel','naphtha','ethanol','corn','rice','barley','oats','canola','palm_oil','sugar','coffee','cocoa',
+                        'cotton','rubber','lumber','urea','potash','phosphate','dap',
+                        'carbon_eu_ets','carbon_uk_ets','carbon_cca','carbon_rggi',
+                        'brent','wti','urals','dubai','oman'
+                    )),         -- NULL = all commodities
+    alert_type      TEXT CONSTRAINT chk_alert_type CHECK (alert_type IS NULL OR alert_type IN (
+                        'ais_anomaly','price_move','news_event','port_congestion','geopolitical',
+                        'vessel_dark','vessel_speed_anomaly','vessel_route_deviation','vessel_ais_gap',
+                        'vessel_draught_change','vessel_zone_entry','vessel_zone_exit','vessel_loitering',
+                        'vessel_sts_transfer','vessel_flag_change','vessel_name_change','vessel_spoofing',
+                        'price_spike','price_crash','price_cross_ma','spread_anomaly','forward_curve_shift',
+                        'inventory_draw','inventory_build','supply_disruption','demand_shock',
+                        'sanctions_alert','weather_event'
+                    )),             -- NULL = all types
     min_severity    alert_severity NOT NULL DEFAULT 'warning',
     notify_email    BOOLEAN NOT NULL DEFAULT TRUE,
     notify_webhook  BOOLEAN NOT NULL DEFAULT FALSE,
@@ -358,7 +403,7 @@ CREATE TABLE bottleneck_nodes (
     country_code    TEXT NOT NULL,
     latitude        DOUBLE PRECISION,
     longitude       DOUBLE PRECISION,
-    commodities     commodity_type[],
+    commodities     TEXT[],
     annual_volume_mt DECIMAL(14,2),
     global_share_pct DECIMAL(5,2),          -- % of global supply passing through
     baseline_risk   INT NOT NULL DEFAULT 3, -- 1-10
@@ -389,6 +434,13 @@ SELECT create_hypertable('chokepoint_status', 'time',
     chunk_time_interval => INTERVAL '1 day');
 
 CREATE INDEX idx_cs_node_time ON chokepoint_status(node_id, time DESC);
+
+ALTER TABLE chokepoint_status SET (
+    timescaledb.compress,
+    timescaledb.compress_segmentby = 'node_id'
+);
+SELECT add_compression_policy('chokepoint_status', INTERVAL '7 days');
+SELECT add_retention_policy('chokepoint_status', INTERVAL '180 days');
 
 -- ============================================================
 -- AUDIT LOG
@@ -446,39 +498,39 @@ INSERT INTO bottleneck_nodes (slug, name, type, country_code, latitude, longitud
     commodities, annual_volume_mt, global_share_pct, baseline_risk, description) VALUES
 
 -- Energy — oil & gas
-('strait_hormuz',     'Strait of Hormuz',       'strait', 'IR',  26.57,  56.25, ARRAY['crude_oil','lng']::commodity_type[],  2000, 30.0, 8, 'World''s most important oil chokepoint. ~21M bbl/day.'),
-('strait_malacca',    'Strait of Malacca',       'strait', 'MY',   1.25, 103.66, ARRAY['crude_oil','lng','coal']::commodity_type[], 3200, 25.0, 5, '80% of oil to Asia-Pacific passes here.'),
-('suez_canal',        'Suez Canal',              'strait', 'EG',  30.42,  32.34, ARRAY['crude_oil','lng']::commodity_type[],  1200, 12.0, 6, '12% of global trade. Closed 2021 for 6 days.'),
-('bab_el_mandeb',     'Bab-el-Mandeb Strait',    'strait', 'DJ',  12.58,  43.47, ARRAY['crude_oil','lng']::commodity_type[],   900,  9.0, 9, 'Active Houthi threat as of 2024–2026.'),
-('panama_canal',      'Panama Canal',            'strait', 'PA',   9.08, -79.68, ARRAY['lng','crude_oil']::commodity_type[],    450,  5.0, 5, 'Drought restrictions impacted capacity 2023.'),
-('strait_gibraltar',  'Strait of Gibraltar',     'strait', 'MA',  35.97,  -5.45, ARRAY['crude_oil']::commodity_type[],          600,  7.0, 3, 'Atlantic–Mediterranean gateway.'),
-('bosphorus',         'Bosphorus Strait',        'strait', 'TR',  41.12,  29.08, ARRAY['crude_oil']::commodity_type[],          180,  2.0, 5, 'Turkey controls — geopolitical risk.'),
-('cape_of_ghh',       'Cape of Good Hope',       'strait', 'ZA', -34.36,  18.47, ARRAY['crude_oil','lng']::commodity_type[],    200,  2.0, 2, 'Bypass route for Suez closure.'),
-('sabine_pass',       'Sabine Pass LNG Terminal','port',   'US',  29.73, -93.87, ARRAY['lng']::commodity_type[],                 90, 20.0, 4, 'Largest US LNG export terminal.'),
+('strait_hormuz',     'Strait of Hormuz',       'strait', 'IR',  26.57,  56.25, ARRAY['crude_oil','lng']::TEXT[],  2000, 30.0, 8, 'World''s most important oil chokepoint. ~21M bbl/day.'),
+('strait_malacca',    'Strait of Malacca',       'strait', 'MY',   1.25, 103.66, ARRAY['crude_oil','lng','coal']::TEXT[], 3200, 25.0, 5, '80% of oil to Asia-Pacific passes here.'),
+('suez_canal',        'Suez Canal',              'strait', 'EG',  30.42,  32.34, ARRAY['crude_oil','lng']::TEXT[],  1200, 12.0, 6, '12% of global trade. Closed 2021 for 6 days.'),
+('bab_el_mandeb',     'Bab-el-Mandeb Strait',    'strait', 'DJ',  12.58,  43.47, ARRAY['crude_oil','lng']::TEXT[],   900,  9.0, 9, 'Active Houthi threat as of 2024–2026.'),
+('panama_canal',      'Panama Canal',            'strait', 'PA',   9.08, -79.68, ARRAY['lng','crude_oil']::TEXT[],    450,  5.0, 5, 'Drought restrictions impacted capacity 2023.'),
+('strait_gibraltar',  'Strait of Gibraltar',     'strait', 'MA',  35.97,  -5.45, ARRAY['crude_oil']::TEXT[],          600,  7.0, 3, 'Atlantic–Mediterranean gateway.'),
+('bosphorus',         'Bosphorus Strait',        'strait', 'TR',  41.12,  29.08, ARRAY['crude_oil']::TEXT[],          180,  2.0, 5, 'Turkey controls — geopolitical risk.'),
+('cape_of_ghh',       'Cape of Good Hope',       'strait', 'ZA', -34.36,  18.47, ARRAY['crude_oil','lng']::TEXT[],    200,  2.0, 2, 'Bypass route for Suez closure.'),
+('sabine_pass',       'Sabine Pass LNG Terminal','port',   'US',  29.73, -93.87, ARRAY['lng']::TEXT[],                 90, 20.0, 4, 'Largest US LNG export terminal.'),
 
 -- Coal
-('port_newcastle_au', 'Port Newcastle',          'port',   'AU', -32.92, 151.78, ARRAY['coal']::commodity_type[],              160, 38.0, 6, 'World''s largest coal export terminal. Hunter Valley rail dependency.'),
-('hay_point_au',      'Hay Point',               'port',   'AU', -21.28, 149.30, ARRAY['coal']::commodity_type[],               50, 12.0, 5, 'Queensland coking coal. BHP/Mitsubishi JV.'),
-('abbot_point_au',    'Abbot Point',             'port',   'AU', -19.87, 148.08, ARRAY['coal']::commodity_type[],               50,  8.0, 4, 'Queensland Bowen Basin coal.'),
-('richbay_zaf',       'Richards Bay Coal Term.', 'port',   'ZA', -28.80,  32.08, ARRAY['coal']::commodity_type[],               77, 15.0, 4, 'Primary South African coal export hub.'),
+('port_newcastle_au', 'Port Newcastle',          'port',   'AU', -32.92, 151.78, ARRAY['coal']::TEXT[],              160, 38.0, 6, 'World''s largest coal export terminal. Hunter Valley rail dependency.'),
+('hay_point_au',      'Hay Point',               'port',   'AU', -21.28, 149.30, ARRAY['coal']::TEXT[],               50, 12.0, 5, 'Queensland coking coal. BHP/Mitsubishi JV.'),
+('abbot_point_au',    'Abbot Point',             'port',   'AU', -19.87, 148.08, ARRAY['coal']::TEXT[],               50,  8.0, 4, 'Queensland Bowen Basin coal.'),
+('richbay_zaf',       'Richards Bay Coal Term.', 'port',   'ZA', -28.80,  32.08, ARRAY['coal']::TEXT[],               77, 15.0, 4, 'Primary South African coal export hub.'),
 
 -- Iron ore
-('port_hedland_au',   'Port Hedland',            'port',   'AU', -20.32, 118.57, ARRAY['iron_ore']::commodity_type[],          580, 55.0, 5, 'World''s largest iron ore export port. Pilbara — BHP.'),
-('dampier_au',        'Dampier Port',            'port',   'AU', -20.65, 116.72, ARRAY['iron_ore','lng']::commodity_type[],    180, 17.0, 4, 'Pilbara — Rio Tinto.'),
-('port_walcott_au',   'Port Walcott',            'port',   'AU', -20.85, 117.16, ARRAY['iron_ore']::commodity_type[],           85,  8.0, 3, 'Pilbara — Hancock Prospecting.'),
-('tubarao_bra',       'Tubarão Port',            'port',   'BR', -20.29, -40.25, ARRAY['iron_ore']::commodity_type[],          120, 11.0, 3, 'Vale''s main iron ore export terminal.'),
+('port_hedland_au',   'Port Hedland',            'port',   'AU', -20.32, 118.57, ARRAY['iron_ore']::TEXT[],          580, 55.0, 5, 'World''s largest iron ore export port. Pilbara — BHP.'),
+('dampier_au',        'Dampier Port',            'port',   'AU', -20.65, 116.72, ARRAY['iron_ore','lng']::TEXT[],    180, 17.0, 4, 'Pilbara — Rio Tinto.'),
+('port_walcott_au',   'Port Walcott',            'port',   'AU', -20.85, 117.16, ARRAY['iron_ore']::TEXT[],           85,  8.0, 3, 'Pilbara — Hancock Prospecting.'),
+('tubarao_bra',       'Tubarão Port',            'port',   'BR', -20.29, -40.25, ARRAY['iron_ore']::TEXT[],          120, 11.0, 3, 'Vale''s main iron ore export terminal.'),
 
 -- Copper
-('antofagasta_chl',   'Antofagasta Port',        'port',   'CL', -23.63, -70.40, ARRAY['copper']::commodity_type[],             35, 27.0, 5, 'Atacama Desert — 27% of global copper supply.'),
-('callao_per',        'Port of Callao',          'port',   'PE', -12.05, -77.15, ARRAY['copper']::commodity_type[],             25, 12.0, 4, 'Peru primary copper & zinc export hub.'),
-('ilo_per',           'Ilo Port',                'port',   'PE', -17.64, -71.34, ARRAY['copper']::commodity_type[],             15,  7.0, 3, 'Southern Peru copper.'),
-('norilsk_rus',       'Norilsk',                 'port',   'RU',  69.33,  88.20, ARRAY['nickel','palladium','copper']::commodity_type[], 2, 40.0, 7, '40% global palladium. High sanctions risk.'),
+('antofagasta_chl',   'Antofagasta Port',        'port',   'CL', -23.63, -70.40, ARRAY['copper']::TEXT[],             35, 27.0, 5, 'Atacama Desert — 27% of global copper supply.'),
+('callao_per',        'Port of Callao',          'port',   'PE', -12.05, -77.15, ARRAY['copper']::TEXT[],             25, 12.0, 4, 'Peru primary copper & zinc export hub.'),
+('ilo_per',           'Ilo Port',                'port',   'PE', -17.64, -71.34, ARRAY['copper']::TEXT[],             15,  7.0, 3, 'Southern Peru copper.'),
+('norilsk_rus',       'Norilsk',                 'port',   'RU',  69.33,  88.20, ARRAY['nickel','palladium','copper']::TEXT[], 2, 40.0, 7, '40% global palladium. High sanctions risk.'),
 
 -- Grain
-('odessa_ukr',        'Port of Odessa',          'port',   'UA',  46.49,  30.75, ARRAY['wheat','soybeans']::commodity_type[],   60, 28.0, 9, 'Black Sea corridor. Active conflict zone.'),
-('novorossiysk_rus',  'Novorossiysk',            'port',   'RU',  44.72,  37.77, ARRAY['wheat']::commodity_type[],              50, 20.0, 7, 'Russia wheat export hub. Sanctions risk.'),
-('new_orleans_usa',   'New Orleans / Mississippi','port',  'US',  29.95, -90.07, ARRAY['wheat','soybeans']::commodity_type[],  100, 35.0, 4, '60% of US grain exports.'),
-('santos_bra',        'Port of Santos',          'port',   'BR', -23.96, -46.33, ARRAY['soybeans','wheat']::commodity_type[],  130, 25.0, 3, 'Largest Latin American port.');
+('odessa_ukr',        'Port of Odessa',          'port',   'UA',  46.49,  30.75, ARRAY['wheat','soybeans']::TEXT[],   60, 28.0, 9, 'Black Sea corridor. Active conflict zone.'),
+('novorossiysk_rus',  'Novorossiysk',            'port',   'RU',  44.72,  37.77, ARRAY['wheat']::TEXT[],              50, 20.0, 7, 'Russia wheat export hub. Sanctions risk.'),
+('new_orleans_usa',   'New Orleans / Mississippi','port',  'US',  29.95, -90.07, ARRAY['wheat','soybeans']::TEXT[],  100, 35.0, 4, '60% of US grain exports.'),
+('santos_bra',        'Port of Santos',          'port',   'BR', -23.96, -46.33, ARRAY['soybeans','wheat']::TEXT[],  130, 25.0, 3, 'Largest Latin American port.');
 
 -- ============================================================
 -- SEED DATA — INITIAL ADMIN USER placeholder

@@ -5,25 +5,58 @@
 - DELETE /alert-subscriptions/{id}   — delete subscription
 """
 
+import ipaddress
+import re
 from typing import Any
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from dependencies import get_db
 from middleware.auth import require_auth
+from middleware.rate_limit import check_api_rate_limit
 
 router = APIRouter(prefix="/alert-subscriptions", tags=["Alerts"])
 
+# Internal/private IP ranges that must be blocked for SSRF protection
+_BLOCKED_IP_RANGES = [
+    ipaddress.ip_network("10.0.0.0/8"),
+    ipaddress.ip_network("172.16.0.0/12"),
+    ipaddress.ip_network("192.168.0.0/16"),
+    ipaddress.ip_network("169.254.0.0/16"),
+    ipaddress.ip_network("127.0.0.0/8"),
+]
 
-async def _get_db():
-    from main import engine
-    from sqlalchemy.ext.asyncio import async_sessionmaker
+_BLOCKED_HOSTNAMES = {"localhost", "0.0.0.0"}
 
-    async_session = async_sessionmaker(engine, expire_on_commit=False)
-    async with async_session() as session:
-        yield session
+
+def _validate_webhook_url(url: str) -> str:
+    """Validate webhook URL: must be HTTPS and not target internal networks."""
+    if not url.startswith("https://"):
+        raise ValueError("webhook_url must use HTTPS")
+
+    parsed = urlparse(url)
+    hostname = parsed.hostname or ""
+
+    if hostname in _BLOCKED_HOSTNAMES:
+        raise ValueError("webhook_url cannot target localhost or internal hosts")
+
+    # Check if hostname is an IP address in a blocked range
+    try:
+        addr = ipaddress.ip_address(hostname)
+        for network in _BLOCKED_IP_RANGES:
+            if addr in network:
+                raise ValueError("webhook_url cannot target internal/private IP ranges")
+    except ValueError as e:
+        if "internal" in str(e) or "localhost" in str(e):
+            raise
+        # hostname is not an IP — that's fine, it's a domain name
+        pass
+
+    return url
 
 
 class CreateSubscription(BaseModel):
@@ -34,11 +67,18 @@ class CreateSubscription(BaseModel):
     notify_webhook: bool = False
     webhook_url: str | None = None
 
+    @field_validator("webhook_url")
+    @classmethod
+    def validate_webhook(cls, v: str | None) -> str | None:
+        if v is not None:
+            return _validate_webhook_url(v)
+        return v
+
 
 @router.get("")
 async def list_subscriptions(
-    user: dict[str, Any] = Depends(require_auth),
-    db: AsyncSession = Depends(_get_db),
+    user: dict[str, Any] = Depends(check_api_rate_limit),
+    db: AsyncSession = Depends(get_db),
 ):
     """List current user's alert subscriptions."""
     clerk_id = user.get("sub")
@@ -76,8 +116,8 @@ async def list_subscriptions(
 @router.post("", status_code=201)
 async def create_subscription(
     body: CreateSubscription,
-    user: dict[str, Any] = Depends(require_auth),
-    db: AsyncSession = Depends(_get_db),
+    user: dict[str, Any] = Depends(check_api_rate_limit),
+    db: AsyncSession = Depends(get_db),
 ):
     """Create an alert subscription."""
     clerk_id = user.get("sub")
@@ -127,8 +167,8 @@ async def create_subscription(
 @router.delete("/{subscription_id}", status_code=204)
 async def delete_subscription(
     subscription_id: str,
-    user: dict[str, Any] = Depends(require_auth),
-    db: AsyncSession = Depends(_get_db),
+    user: dict[str, Any] = Depends(check_api_rate_limit),
+    db: AsyncSession = Depends(get_db),
 ):
     """Delete an alert subscription (must belong to current user)."""
     clerk_id = user.get("sub")

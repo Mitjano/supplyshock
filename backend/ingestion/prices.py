@@ -1,7 +1,9 @@
 """Nasdaq Data Link (Quandl) price ingestion for metals and agriculture.
 
-Fetches copper (LME), iron ore, aluminium, nickel, wheat, soybeans
+Fetches copper, iron ore, aluminium, nickel, wheat, soybeans
 every 1 hour via Celery Beat.
+
+Uses yfinance as fallback for datasets that require premium access or are deprecated.
 """
 
 import logging
@@ -18,24 +20,57 @@ logger = logging.getLogger(__name__)
 NASDAQ_BASE_URL = "https://data.nasdaq.com/api/v3/datasets"
 
 # Nasdaq Data Link dataset codes
+# Note: CHRIS/* datasets are deprecated. We use available alternatives where possible
+# and fall back to yfinance for unavailable datasets.
 NASDAQ_SERIES = {
-    "copper": {"dataset": "LME/PR_CU", "benchmark": "LME", "commodity": "copper", "unit": "tonne"},
-    "iron_ore": {"dataset": "ODA/PIORECR_USD", "benchmark": "TSI 62% Fe", "commodity": "iron_ore", "unit": "tonne"},
-    "aluminium": {"dataset": "LME/PR_AL", "benchmark": "LME", "commodity": "aluminium", "unit": "tonne"},
-    "nickel": {"dataset": "LME/PR_NI", "benchmark": "LME", "commodity": "nickel", "unit": "tonne"},
-    "wheat": {"dataset": "CHRIS/CME_W1", "benchmark": "CME", "commodity": "wheat", "unit": "bushel"},
-    "soybeans": {"dataset": "CHRIS/CME_S1", "benchmark": "CME", "commodity": "soybeans", "unit": "bushel"},
+    "iron_ore": {
+        "dataset": "ODA/PIORECR_USD",
+        "price_column": "Value",  # ODA datasets use "Value" column
+        "benchmark": "TSI 62% Fe",
+        "commodity": "iron_ore",
+        "unit": "tonne",
+    },
+}
+
+# Series fetched via yfinance (Yahoo Finance) as fallback
+# These cover datasets that are deprecated or require premium on Nasdaq Data Link
+YFINANCE_SERIES = {
+    "copper": {
+        "ticker": "HG=F",
+        "benchmark": "COMEX",
+        "commodity": "copper",
+        "unit": "tonne",
+        "multiplier": 22.0462,  # cents/lb -> USD/tonne (2204.62 lb/tonne / 100)
+    },
+    "aluminium": {
+        "ticker": "ALI=F",
+        "benchmark": "COMEX",
+        "commodity": "aluminium",
+        "unit": "tonne",
+    },
+    "nickel": {
+        "ticker": "^SPGSNI",  # S&P GSCI Nickel Index as proxy
+        "benchmark": "LME",
+        "commodity": "nickel",
+        "unit": "tonne",
+    },
+    "wheat": {
+        "ticker": "ZW=F",
+        "benchmark": "CME",
+        "commodity": "wheat",
+        "unit": "bushel",
+    },
+    "soybeans": {
+        "ticker": "ZS=F",
+        "benchmark": "CME",
+        "commodity": "soybeans",
+        "unit": "bushel",
+    },
 }
 
 
-def fetch_nasdaq_prices() -> list[dict]:
-    """Fetch latest prices from Nasdaq Data Link."""
-    api_key = settings.NASDAQ_DATA_LINK_API_KEY
-
-    if not api_key:
-        logger.warning("NASDAQ_DATA_LINK_API_KEY not set — using fallback prices")
-        return _fallback_prices()
-
+def _fetch_nasdaq_prices(api_key: str) -> list[dict]:
+    """Fetch prices from Nasdaq Data Link for available datasets."""
     prices = []
     for key, config in NASDAQ_SERIES.items():
         try:
@@ -49,13 +84,41 @@ def fetch_nasdaq_prices() -> list[dict]:
 
             dataset = data.get("dataset", {})
             rows = dataset.get("data", [])
-            if rows:
+            columns = dataset.get("column_names", [])
+
+            if rows and columns:
                 latest = rows[0]
-                # Price is in column 1 (after date in column 0)
-                price = float(latest[1]) if len(latest) > 1 else 0
+
+                # Find the correct price column by name
+                price_col = config.get("price_column", "Value")
+                col_idx = None
+                for i, col_name in enumerate(columns):
+                    if col_name.lower() == price_col.lower():
+                        col_idx = i
+                        break
+                    # Fallback: look for Settlement/Close/Last
+                    if col_name.lower() in ("settle", "settlement", "close", "last", "value"):
+                        col_idx = i
+
+                if col_idx is None or col_idx >= len(latest):
+                    logger.warning("Could not find price column for %s in columns: %s", key, columns)
+                    continue
+
+                price = float(latest[col_idx]) if latest[col_idx] is not None else 0
                 if price <= 0:
                     logger.warning("Invalid price for %s: %s", key, latest)
                     continue
+
+                # Use actual data date from column 0 (always the date column)
+                data_date = latest[0] if latest[0] else None
+                try:
+                    price_time = datetime.strptime(data_date, "%Y-%m-%d").replace(
+                        tzinfo=timezone.utc
+                    ).isoformat()
+                except (ValueError, TypeError):
+                    logger.warning("Could not parse date '%s' for %s, using current time", data_date, key)
+                    price_time = datetime.now(timezone.utc).isoformat()
+
                 prices.append({
                     "commodity": config["commodity"],
                     "benchmark": config["benchmark"],
@@ -63,32 +126,84 @@ def fetch_nasdaq_prices() -> list[dict]:
                     "currency": "USD",
                     "unit": config["unit"],
                     "source": "nasdaq_data_link",
-                    "time": datetime.now(timezone.utc).isoformat(),
+                    "time": price_time,
                 })
         except Exception as e:
-            logger.warning("Nasdaq fetch failed for %s: %s", key, e)
-
-    if not prices:
-        return _fallback_prices()
+            logger.error("Nasdaq fetch failed for %s: %s", key, e)
 
     return prices
 
 
-def _fallback_prices() -> list[dict]:
-    """Fallback prices for development/demo."""
-    now = datetime.now(timezone.utc).isoformat()
-    return [
-        {"commodity": "copper", "benchmark": "LME", "price": 8950.00, "currency": "USD", "unit": "tonne", "source": "fallback", "time": now},
-        {"commodity": "iron_ore", "benchmark": "TSI 62% Fe", "price": 108.50, "currency": "USD", "unit": "tonne", "source": "fallback", "time": now},
-        {"commodity": "aluminium", "benchmark": "LME", "price": 2380.00, "currency": "USD", "unit": "tonne", "source": "fallback", "time": now},
-        {"commodity": "nickel", "benchmark": "LME", "price": 16200.00, "currency": "USD", "unit": "tonne", "source": "fallback", "time": now},
-        {"commodity": "wheat", "benchmark": "CME", "price": 5.82, "currency": "USD", "unit": "bushel", "source": "fallback", "time": now},
-        {"commodity": "soybeans", "benchmark": "CME", "price": 11.45, "currency": "USD", "unit": "bushel", "source": "fallback", "time": now},
-    ]
+def _fetch_yfinance_prices() -> list[dict]:
+    """Fetch prices via yfinance for commodities not available on Nasdaq Data Link."""
+    try:
+        import yfinance as yf
+    except ImportError:
+        logger.error("yfinance not installed — cannot fetch fallback prices. pip install yfinance")
+        return []
+
+    prices = []
+    for key, config in YFINANCE_SERIES.items():
+        try:
+            ticker = yf.Ticker(config["ticker"])
+            hist = ticker.history(period="5d")
+
+            if hist.empty:
+                logger.warning("No yfinance data for %s (%s)", key, config["ticker"])
+                continue
+
+            latest = hist.iloc[-1]
+            price = float(latest["Close"])
+
+            # Apply unit conversion multiplier if specified
+            multiplier = config.get("multiplier")
+            if multiplier:
+                price *= multiplier
+
+            if price <= 0:
+                logger.warning("Invalid yfinance price for %s: %s", key, price)
+                continue
+
+            # Use the actual date from yfinance index
+            price_time = latest.name.to_pydatetime().replace(tzinfo=timezone.utc).isoformat()
+
+            prices.append({
+                "commodity": config["commodity"],
+                "benchmark": config["benchmark"],
+                "price": round(price, 2),
+                "currency": "USD",
+                "unit": config["unit"],
+                "source": "yfinance",
+                "time": price_time,
+            })
+        except Exception as e:
+            logger.error("yfinance fetch failed for %s: %s", key, e)
+
+    return prices
+
+
+def fetch_nasdaq_prices() -> list[dict]:
+    """Fetch latest prices from Nasdaq Data Link and yfinance fallbacks."""
+    api_key = settings.NASDAQ_DATA_LINK_API_KEY
+
+    prices = []
+
+    if api_key:
+        prices.extend(_fetch_nasdaq_prices(api_key))
+    else:
+        logger.warning("NASDAQ_DATA_LINK_API_KEY not set — skipping Nasdaq datasets")
+
+    # Always try yfinance for commodities not covered by Nasdaq
+    prices.extend(_fetch_yfinance_prices())
+
+    if not prices:
+        logger.error("No prices fetched from any source")
+
+    return prices
 
 
 def ingest_nasdaq_prices():
-    """Fetch and store Nasdaq prices in commodity_prices table."""
+    """Fetch and store prices in commodity_prices table."""
     prices = fetch_nasdaq_prices()
     if not prices:
         return 0
@@ -110,7 +225,7 @@ def ingest_nasdaq_prices():
                 values,
             )
         conn.commit()
-        logger.info("Ingested %d Nasdaq prices", len(prices))
+        logger.info("Ingested %d commodity prices", len(prices))
     finally:
         conn.close()
 

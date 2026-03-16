@@ -11,24 +11,17 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from dependencies import get_db
 from middleware.auth import require_auth
+from middleware.rate_limit import check_api_rate_limit
 
 router = APIRouter(prefix="/bottlenecks", tags=["Bottlenecks"])
 
 
-async def _get_db():
-    from main import engine
-    from sqlalchemy.ext.asyncio import async_sessionmaker
-
-    async_session = async_sessionmaker(engine, expire_on_commit=False)
-    async with async_session() as session:
-        yield session
-
-
 @router.get("")
 async def list_bottlenecks(
-    user: dict[str, Any] = Depends(require_auth),
-    db: AsyncSession = Depends(_get_db),
+    user: dict[str, Any] = Depends(check_api_rate_limit),
+    db: AsyncSession = Depends(get_db),
 ):
     """List all bottleneck nodes."""
     result = await db.execute(
@@ -66,8 +59,8 @@ async def list_bottlenecks(
 @router.get("/{slug}")
 async def get_bottleneck(
     slug: str,
-    user: dict[str, Any] = Depends(require_auth),
-    db: AsyncSession = Depends(_get_db),
+    user: dict[str, Any] = Depends(check_api_rate_limit),
+    db: AsyncSession = Depends(get_db),
 ):
     """Get bottleneck node detail."""
     result = await db.execute(
@@ -108,8 +101,8 @@ async def get_bottleneck(
 async def get_bottleneck_status(
     slug: str,
     history_days: int = Query(7, le=30),
-    user: dict[str, Any] = Depends(require_auth),
-    db: AsyncSession = Depends(_get_db),
+    user: dict[str, Any] = Depends(check_api_rate_limit),
+    db: AsyncSession = Depends(get_db),
 ):
     """Get real-time congestion status for a bottleneck + history."""
     # Verify node exists
@@ -123,14 +116,14 @@ async def get_bottleneck_status(
 
     # Get status history
     result = await db.execute(
-        text(f"""
+        text("""
             SELECT vessel_count, avg_speed_knots, congestion_index, risk_level, time
             FROM chokepoint_status
             WHERE node_id = :node_id
-              AND time > NOW() - INTERVAL '{history_days} days'
+              AND time > NOW() - make_interval(days => :history_days)
             ORDER BY time DESC
         """),
-        {"node_id": node["id"]},
+        {"node_id": node["id"], "history_days": history_days},
     )
     rows = result.mappings().all()
 

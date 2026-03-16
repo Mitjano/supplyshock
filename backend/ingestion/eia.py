@@ -1,6 +1,6 @@
 """EIA (Energy Information Administration) price ingestion.
 
-Fetches crude oil (WTI, Brent), LNG (Henry Hub), and coal (API2 proxy)
+Fetches crude oil (WTI, Brent) and natural gas (Henry Hub)
 prices every 6 hours via Celery Beat.
 """
 
@@ -17,27 +17,58 @@ logger = logging.getLogger(__name__)
 
 EIA_BASE_URL = "https://api.eia.gov/v2"
 
-# EIA series IDs for energy commodities
+# EIA API v2 series configuration
+# v2 uses route-based paths + facets instead of v1 series IDs
 EIA_SERIES = {
-    "crude_oil_wti": {"series": "PET.RWTC.D", "benchmark": "WTI", "commodity": "crude_oil", "unit": "barrel"},
-    "crude_oil_brent": {"series": "PET.RBRTE.D", "benchmark": "Brent", "commodity": "crude_oil", "unit": "barrel"},
-    "lng_henry_hub": {"series": "NG.RNGWHHD.D", "benchmark": "Henry Hub", "commodity": "lng", "unit": "mmbtu"},
+    "crude_oil_wti": {
+        "route": "petroleum/pri/spt",
+        "facet_series": "RWTC",
+        "frequency": "daily",
+        "benchmark": "WTI",
+        "commodity": "crude_oil",
+        "unit": "barrel",
+    },
+    "crude_oil_brent": {
+        "route": "petroleum/pri/spt",
+        "facet_series": "RBRTE",
+        "frequency": "daily",
+        "benchmark": "Brent",
+        "commodity": "crude_oil",
+        "unit": "barrel",
+    },
+    "lng_henry_hub": {
+        "route": "natural-gas/pri/sum",
+        "facet_series": "RNGWHHD",
+        "frequency": "daily",
+        "benchmark": "Henry Hub",
+        "commodity": "lng",
+        "unit": "mmbtu",
+    },
 }
 
 
 def fetch_eia_prices() -> list[dict]:
-    """Fetch latest prices from EIA API."""
+    """Fetch latest prices from EIA API v2."""
     api_key = settings.EIA_API_KEY
     if not api_key:
-        logger.warning("EIA_API_KEY not set — using fallback prices")
-        return _fallback_eia_prices()
+        logger.error("EIA_API_KEY not set — skipping EIA price ingestion")
+        return []
 
     prices = []
     for key, config in EIA_SERIES.items():
         try:
+            url = f"{EIA_BASE_URL}/{config['route']}/data/"
             resp = httpx.get(
-                f"{EIA_BASE_URL}/seriesid/{config['series']}",
-                params={"api_key": api_key, "num": 5},
+                url,
+                params={
+                    "api_key": api_key,
+                    "frequency": config["frequency"],
+                    "data[0]": "value",
+                    "facets[series][]": config["facet_series"],
+                    "sort[0][column]": "period",
+                    "sort[0][direction]": "desc",
+                    "length": 1,
+                },
                 timeout=15,
             )
             resp.raise_for_status()
@@ -46,39 +77,47 @@ def fetch_eia_prices() -> list[dict]:
             series_data = data.get("response", {}).get("data", [])
             if series_data:
                 latest = series_data[0]
+                value = latest.get("value")
+                if value is None:
+                    logger.warning("EIA returned null value for %s", key)
+                    continue
+
+                price = float(value)
+                if price <= 0:
+                    logger.warning("EIA returned non-positive price for %s: %s", key, price)
+                    continue
+
+                # Use the period from API response as the price timestamp
+                period = latest.get("period", "")
+                try:
+                    # EIA daily periods are formatted as YYYY-MM-DD
+                    price_time = datetime.strptime(period, "%Y-%m-%d").replace(
+                        tzinfo=timezone.utc
+                    ).isoformat()
+                except (ValueError, TypeError):
+                    logger.warning("Could not parse period '%s' for %s, using current time", period, key)
+                    price_time = datetime.now(timezone.utc).isoformat()
+
                 prices.append({
                     "commodity": config["commodity"],
                     "benchmark": config["benchmark"],
-                    "price": float(latest.get("value", 0)),
+                    "price": price,
                     "currency": "USD",
                     "unit": config["unit"],
                     "source": "eia",
-                    "time": datetime.now(timezone.utc).isoformat(),
+                    "time": price_time,
                 })
         except Exception as e:
-            logger.warning("EIA fetch failed for %s: %s", key, e)
-
-    if not prices:
-        return _fallback_eia_prices()
+            logger.error("EIA fetch failed for %s: %s", key, e)
 
     return prices
-
-
-def _fallback_eia_prices() -> list[dict]:
-    """Fallback prices for development/demo without API key."""
-    now = datetime.now(timezone.utc).isoformat()
-    return [
-        {"commodity": "crude_oil", "benchmark": "WTI", "price": 78.50, "currency": "USD", "unit": "barrel", "source": "fallback", "time": now},
-        {"commodity": "crude_oil", "benchmark": "Brent", "price": 82.30, "currency": "USD", "unit": "barrel", "source": "fallback", "time": now},
-        {"commodity": "lng", "benchmark": "Henry Hub", "price": 2.85, "currency": "USD", "unit": "mmbtu", "source": "fallback", "time": now},
-        {"commodity": "coal", "benchmark": "API2", "price": 115.00, "currency": "USD", "unit": "tonne", "source": "fallback", "time": now},
-    ]
 
 
 def ingest_eia_prices():
     """Fetch and store EIA prices in commodity_prices table."""
     prices = fetch_eia_prices()
     if not prices:
+        logger.info("No EIA prices fetched — nothing to ingest")
         return 0
 
     conn = psycopg2.connect(settings.DATABASE_URL_SYNC)

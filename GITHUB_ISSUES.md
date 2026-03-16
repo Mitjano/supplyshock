@@ -6,7 +6,7 @@
 
 ## MILESTONE 0 — Fundament (przed Fazą 1)
 > Cel: repo działa lokalnie, auth skonfigurowany, baza gotowa
-> Czas: 2–3 dni
+> Czas: 2 weeks (10 + 10 new issues = 20 issues total)
 > Blokuje: wszystkie pozostałe Issues
 
 ---
@@ -715,6 +715,9 @@ backend/simulation/poc_newcastle.py  ← NOWY (POC script)
 ---
 
 ## MILESTONE 4 — Faza 4: Monetyzacja
+
+> ⚠️ **SCHEDULING NOTE:** M4 should begin in parallel with M2/M3, NOT after M5-D as shown in the original dependency graph. Production deploy and monitoring must be in place before building M5 features.
+
 > Cel: user accounts, billing UI, API keys, production deploy
 > Czas: 3 tygodnie
 > Dependency: Milestone 3 complete
@@ -2577,10 +2580,20 @@ ALTER TABLE alert_events ADD CONSTRAINT alert_type_check CHECK (
 ```
 M0 (fundamenty):
     #1 → #2 → #3 → #4 → #5 → #6 → #36
-    #91 (alert_type expansion) ← #3
+    #91 (alert_type expansion) ← #3  ⚠️ SUPERSEDED by #119
     #92 (charting library) — standalone
     #93 (design system) — standalone
     #105 (E2E Playwright) — standalone
+    #110 (nginx.conf) — standalone
+    #111 (frontend Dockerfile) — standalone
+    #112 (backend Dockerfile) — standalone
+    #113 (Sentry init) — standalone
+    #114 (EIA API v2 fix) ← #3
+    #115 (SQL injection fix) — standalone
+    #116 (rate limiting apply) ← #6
+    #117 (CD pipeline) ← #35, #111, #112
+    #118 (Docker hardening) ← #1
+    #119 (ENUM → TEXT+CHECK) ← #3  ⚠️ Supersedes #91
                                         ↓
 M1 (core features + UX foundation):
     #7 → #8 → #9 → #10
@@ -2643,8 +2656,8 @@ M2 ─────┤
               #109 (structured logging) ← #38
 ```
 
-**Total: 109 issues across 7 milestones (M0-M6)**
-- M0: 6 + 4 nowe (#91-#93, #105) = **10 issues**
+**Total: 119 issues across 7 milestones (M0-M6)**
+- M0: 6 + 4 nowe (#91-#93, #105) + 10 new (#110-#119) = **20 issues**
 - M1: 10 + 7 nowe (#94-#98, #100-#102) = **17 issues**
 - M2: 8 + 1 nowy (#99) = **9 issues**
 - M3: 6 issues
@@ -2652,7 +2665,7 @@ M2 ─────┤
 - M5: 36 + 1 nowy (#107) = **37 issues**
 - M6: 15 + 1 nowy (#108) = **16 issues**
 
-**Total: 90 issues across 7 milestones (M0-M6)**
+> **Realistic total: 40-50 weeks for solo developer** (including testing, debugging, and iteration)
 
 ---
 
@@ -3300,3 +3313,231 @@ M2 ─────┤
 - `frontend/src/components/admin/IngestionHealth.vue`
 
 **Dependency:** #38 (Sentry)
+
+---
+
+### Issue #110
+**Title:** `[M0] Create nginx.conf for production reverse proxy`
+**Labels:** `milestone-0` `infrastructure` `priority-critical`
+
+**Cel:** nginx.conf is missing — production deploy fails. Create professional config with SSL, security headers, gzip, rate limiting, proxy rules.
+
+**Acceptance criteria:**
+- [ ] `infra/nginx.conf` exists with production-ready configuration
+- [ ] SSL/TLS termination via Let's Encrypt (certbot integration)
+- [ ] Security headers: X-Frame-Options, X-Content-Type-Options, HSTS, CSP
+- [ ] Gzip compression enabled for text/html, application/json, etc.
+- [ ] Rate limiting: 10 req/s per IP for API, 50 req/s for static assets
+- [ ] Proxy rules: `/api/` → backend:8000, `/` → frontend static files
+- [ ] WebSocket/SSE proxy support for live data feeds
+- [ ] Access and error log configuration
+
+**Pliki:** `infra/nginx.conf`
+
+**Estimate:** 2h
+
+**Dependency:** Brak (M0 — fundamenty)
+
+---
+
+### Issue #111
+**Title:** `[M0] Frontend production Dockerfile with multi-stage build`
+**Labels:** `milestone-0` `infrastructure` `priority-critical`
+
+**Cel:** Current Dockerfile only runs dev server. Need multi-stage: build → nginx static serve.
+
+**Acceptance criteria:**
+- [ ] Multi-stage Dockerfile: stage 1 = node:20 build, stage 2 = nginx:alpine serve
+- [ ] `npm run build` produces optimized static assets
+- [ ] nginx serves static files with proper caching headers
+- [ ] `.dockerignore` excludes node_modules, .git, tests, etc.
+- [ ] `frontend/nginx.conf` for SPA routing (fallback to index.html)
+- [ ] Final image size < 50MB
+- [ ] Test: `docker build -t supplyshock-frontend frontend/` succeeds
+
+**Pliki:** `frontend/Dockerfile`, `frontend/.dockerignore`, `frontend/nginx.conf`
+
+**Estimate:** 2h
+
+**Dependency:** Brak (M0 — fundamenty)
+
+---
+
+### Issue #112
+**Title:** `[M0] Backend Dockerfile security — multi-stage + non-root user`
+**Labels:** `milestone-0` `infrastructure` `priority-high`
+
+**Cel:** Remove build tools from runtime, add non-root user, add .dockerignore.
+
+**Acceptance criteria:**
+- [ ] Multi-stage: stage 1 = build (gcc, python3-dev for compiled deps), stage 2 = runtime (slim)
+- [ ] Non-root user `appuser` in runtime stage
+- [ ] `.dockerignore` excludes tests, __pycache__, .git, docs, etc.
+- [ ] No build tools (gcc, make) in final image
+- [ ] Health check in Dockerfile
+- [ ] Final image size < 200MB
+
+**Pliki:** `backend/Dockerfile`, `backend/.dockerignore`
+
+**Estimate:** 1h
+
+**Dependency:** Brak (M0 — fundamenty)
+
+---
+
+### Issue #113
+**Title:** `[M0] Initialize Sentry error tracking`
+**Labels:** `milestone-0` `infrastructure` `priority-critical`
+
+**Cel:** sentry-sdk installed but never initialized. Add sentry_sdk.init() to backend/main.py.
+
+**Acceptance criteria:**
+- [ ] `sentry_sdk.init()` called in `backend/main.py` with DSN from env
+- [ ] FastAPI integration enabled: `sentry_sdk.init(integrations=[FastApiIntegration()])`
+- [ ] Environment tag set (dev/staging/production)
+- [ ] Release version tag from git SHA or env var
+- [ ] `traces_sample_rate` set to 0.1 in production (10% of requests)
+- [ ] Test: intentional error triggers Sentry event
+- [ ] Celery integration for task error tracking
+
+**Pliki:** `backend/main.py`
+
+**Estimate:** 30min
+
+**Dependency:** Brak (M0 — fundamenty)
+
+---
+
+### Issue #114
+**Title:** `[M0] Fix EIA API v2 endpoint format`
+**Labels:** `milestone-0` `backend` `priority-critical` `bug`
+
+**Cel:** EIA ingestion uses v1 URL format against v2 base URL — returns 404. Fix to use v2 query format.
+
+**Acceptance criteria:**
+- [ ] EIA API calls use v2 format: `https://api.eia.gov/v2/{route}/data/?api_key=...&frequency=...&data[0]=value`
+- [ ] Series IDs updated from v1 format (`PET.RWTC.D`) to v2 route+facet format
+- [ ] All existing EIA series (crude, gasoline, natgas, inventories) working
+- [ ] Error handling for 404/403 responses with clear log messages
+- [ ] Test: mock EIA v2 response, verify parsing
+
+**Pliki:** `backend/ingestion/eia.py`
+
+**Estimate:** 2h
+
+**Dependency:** #3 (schema setup)
+
+---
+
+### Issue #115
+**Title:** `[M0] Fix SQL injection in bottleneck status endpoint`
+**Labels:** `milestone-0` `backend` `priority-critical` `security`
+
+**Cel:** `history_days` interpolated via f-string into SQL INTERVAL. Parameterize.
+
+**Acceptance criteria:**
+- [ ] `history_days` parameter is validated as integer (1-365)
+- [ ] SQL query uses parameterized query, NOT f-string interpolation
+- [ ] Before: `f"INTERVAL '{history_days} days'"` → After: `$1 * INTERVAL '1 day'` with parameter binding
+- [ ] All other SQL queries in `bottlenecks.py` audited for similar issues
+- [ ] Test: test_sql_injection_rejected (pass `"1; DROP TABLE"` as history_days)
+
+**Pliki:** `backend/api/v1/bottlenecks.py`
+
+**Estimate:** 30min
+
+**Dependency:** Brak (M0 — fundamenty)
+
+---
+
+### Issue #116
+**Title:** `[M0] Apply rate limiting to all API endpoints`
+**Labels:** `milestone-0` `backend` `priority-high`
+
+**Cel:** check_api_rate_limit exists but is not used anywhere. Apply to all routes.
+
+**Acceptance criteria:**
+- [ ] `@check_api_rate_limit` decorator applied to all `/api/v1/` endpoints
+- [ ] Or: rate limiting applied as middleware (preferred — less repetitive)
+- [ ] Free tier: blocked from API (only web UI)
+- [ ] Pro: 1,000/day, Business: 10,000/day (as defined in CLAUDE.md)
+- [ ] 429 response includes `Retry-After` header
+- [ ] Admin endpoints exempt from rate limiting
+- [ ] Test: test_rate_limit_enforced, test_rate_limit_429_response
+
+**Pliki:** `backend/api/v1/*.py`
+
+**Estimate:** 1h
+
+**Dependency:** #6 (rate limiting setup)
+
+---
+
+### Issue #117
+**Title:** `[M0] CD pipeline — build and push Docker images to GHCR`
+**Labels:** `milestone-0` `infrastructure` `priority-high`
+
+**Cel:** CI exists (lint/test) but no CD. Add GitHub Action to build backend/frontend images and push to GHCR on main push.
+
+**Acceptance criteria:**
+- [ ] `.github/workflows/cd.yml` workflow triggers on push to `main`
+- [ ] Builds `backend/Dockerfile` → `ghcr.io/ORG/supplyshock-backend:latest` + SHA tag
+- [ ] Builds `frontend/Dockerfile` → `ghcr.io/ORG/supplyshock-frontend:latest` + SHA tag
+- [ ] Multi-platform build (linux/amd64) via Docker Buildx
+- [ ] Layer caching for faster builds (GitHub Actions cache)
+- [ ] Only pushes on main branch (not PRs)
+- [ ] Docker Compose prod references GHCR images
+
+**Pliki:** `.github/workflows/cd.yml`
+
+**Estimate:** 3h
+
+**Dependency:** #35 (CI/CD setup), #111 (frontend Dockerfile), #112 (backend Dockerfile)
+
+---
+
+### Issue #118
+**Title:** `[M0] Docker production hardening — networks, limits, logging`
+**Labels:** `milestone-0` `infrastructure` `priority-medium`
+
+**Cel:** Add network isolation, resource limits, log rotation to docker-compose.prod.yml.
+
+**Acceptance criteria:**
+- [ ] Network isolation: `frontend` network (nginx + frontend), `backend` network (backend + db + redis + celery)
+- [ ] Resource limits per service: `deploy.resources.limits` (CPU + memory)
+- [ ] Log rotation: `logging.driver: json-file` with `max-size: 10m`, `max-file: 3`
+- [ ] Restart policy: `restart: unless-stopped` for all services
+- [ ] Health checks for all services (db, redis, backend, frontend, celery)
+- [ ] Read-only filesystem where possible (`read_only: true`)
+
+**Pliki:** `docker-compose.prod.yml`
+
+**Estimate:** 1h
+
+**Dependency:** #1 (repo structure)
+
+---
+
+### Issue #119
+**Title:** `[M0] Migrate alert_type and commodity_type ENUMs to TEXT with CHECK`
+**Labels:** `milestone-0` `database` `priority-high`
+
+**Cel:** ENUMs are too rigid for 28 alert types and 55 commodities. Migrate to TEXT with CHECK constraints. This replaces Issue #91 (which only covered alert_type).
+
+**Acceptance criteria:**
+- [ ] Alembic migration: `ALTER TABLE ... ALTER COLUMN type TYPE TEXT`
+- [ ] CHECK constraints for both `alert_type` and `commodity_type` columns
+- [ ] All 28 alert types listed in CHECK constraint
+- [ ] All 55 commodity types listed in CHECK constraint
+- [ ] Backward compatible — existing data preserved
+- [ ] `schema.sql` updated to reflect TEXT with CHECK (source of truth)
+- [ ] Test: test_new_types_insertable, test_invalid_type_rejected
+
+**Pliki:** `schema.sql`
+
+**Estimate:** 2h
+
+**Note:** Supersedes Issue #91
+
+**Dependency:** #3 (schema setup)
+

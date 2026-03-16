@@ -11,29 +11,24 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from dependencies import get_db
 from middleware.auth import require_auth
+from middleware.rate_limit import check_api_rate_limit
 
 router = APIRouter(prefix="/commodities", tags=["Commodities"])
-
-
-async def _get_db():
-    from main import engine
-    from sqlalchemy.ext.asyncio import async_sessionmaker
-
-    async_session = async_sessionmaker(engine, expire_on_commit=False)
-    async with async_session() as session:
-        yield session
 
 
 @router.get("/prices")
 async def get_latest_prices(
     commodities: str | None = Query(None, description="Comma-separated: crude_oil,coal,copper"),
-    user: dict[str, Any] = Depends(require_auth),
-    db: AsyncSession = Depends(_get_db),
+    offset: int = Query(0, ge=0),
+    limit: int = Query(50, le=200),
+    user: dict[str, Any] = Depends(check_api_rate_limit),
+    db: AsyncSession = Depends(get_db),
 ):
     """Get latest commodity prices."""
     conditions = []
-    params: dict[str, Any] = {}
+    params: dict[str, Any] = {"limit": limit, "offset": offset}
 
     if commodities:
         commodity_list = [c.strip() for c in commodities.split(",")]
@@ -42,6 +37,18 @@ async def get_latest_prices(
 
     where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
 
+    # Get total count of distinct commodity/benchmark pairs
+    count_result = await db.execute(
+        text(f"""
+            SELECT COUNT(*) FROM (
+                SELECT DISTINCT commodity, benchmark FROM commodity_prices
+                {where}
+            ) sub
+        """),
+        params,
+    )
+    total = count_result.scalar()
+
     result = await db.execute(
         text(f"""
             SELECT DISTINCT ON (commodity, benchmark)
@@ -49,6 +56,7 @@ async def get_latest_prices(
             FROM commodity_prices
             {where}
             ORDER BY commodity, benchmark, time DESC
+            LIMIT :limit OFFSET :offset
         """),
         params,
     )
@@ -66,7 +74,8 @@ async def get_latest_prices(
                 "time": row["time"].isoformat(),
             }
             for row in rows
-        ]
+        ],
+        "meta": {"total": total, "offset": offset, "limit": limit},
     }
 
 
@@ -74,8 +83,8 @@ async def get_latest_prices(
 async def get_price_history(
     commodity: str,
     days: int = Query(30, le=365),
-    user: dict[str, Any] = Depends(require_auth),
-    db: AsyncSession = Depends(_get_db),
+    user: dict[str, Any] = Depends(check_api_rate_limit),
+    db: AsyncSession = Depends(get_db),
 ):
     """Get price history for a specific commodity."""
     result = await db.execute(
@@ -110,8 +119,8 @@ async def get_price_history(
 async def get_trade_flows(
     commodity: str | None = Query(None),
     limit: int = Query(20, le=100),
-    user: dict[str, Any] = Depends(require_auth),
-    db: AsyncSession = Depends(_get_db),
+    user: dict[str, Any] = Depends(check_api_rate_limit),
+    db: AsyncSession = Depends(get_db),
 ):
     """Get trade flows as GeoJSON FeatureCollection.
 
@@ -134,8 +143,8 @@ async def get_trade_flows(
                    op.latitude as origin_lat, op.longitude as origin_lng, op.name as origin_port,
                    dp.latitude as dest_lat, dp.longitude as dest_lng, dp.name as dest_port
             FROM trade_flows tf
-            LEFT JOIN ports op ON op.country_code = tf.origin_country AND op.is_major = true
-            LEFT JOIN ports dp ON dp.country_code = tf.destination_country AND dp.is_major = true
+            LEFT JOIN ports op ON op.id = tf.origin_port_id
+            LEFT JOIN ports dp ON dp.id = tf.destination_port_id
             {where}
             ORDER BY tf.volume_mt DESC NULLS LAST
             LIMIT :limit

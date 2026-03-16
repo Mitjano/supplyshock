@@ -11,27 +11,21 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from dependencies import get_db
 from middleware.auth import require_auth
+from middleware.rate_limit import check_api_rate_limit
 
 router = APIRouter(prefix="/vessels", tags=["Vessels"])
-
-
-async def _get_db():
-    from main import engine
-    from sqlalchemy.ext.asyncio import async_sessionmaker
-
-    async_session = async_sessionmaker(engine, expire_on_commit=False)
-    async with async_session() as session:
-        yield session
 
 
 @router.get("")
 async def list_vessels(
     bbox: str | None = Query(None, description="min_lng,min_lat,max_lng,max_lat"),
     vessel_type: str | None = Query(None),
+    offset: int = Query(0, ge=0),
     limit: int = Query(500, le=5000),
-    user: dict[str, Any] = Depends(require_auth),
-    db: AsyncSession = Depends(_get_db),
+    user: dict[str, Any] = Depends(check_api_rate_limit),
+    db: AsyncSession = Depends(get_db),
 ):
     """Get current vessel positions for the map viewport.
 
@@ -59,6 +53,29 @@ async def list_vessels(
 
     where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
 
+    params["offset"] = offset
+
+    # Get total count
+    try:
+        count_result = await db.execute(
+            text(f"SELECT COUNT(*) FROM latest_vessel_positions {where}"),
+            params,
+        )
+        total = count_result.scalar()
+    except Exception:
+        count_result = await db.execute(
+            text(f"""
+                SELECT COUNT(*) FROM (
+                    SELECT DISTINCT ON (mmsi) mmsi
+                    FROM vessel_positions
+                    WHERE time > NOW() - INTERVAL '2 hours'
+                ) sub
+                {where}
+            """),
+            params,
+        )
+        total = count_result.scalar()
+
     # Try materialized view first, fall back to subquery
     try:
         result = await db.execute(
@@ -67,7 +84,7 @@ async def list_vessels(
                        speed_knots, course, destination, flag_country, time
                 FROM latest_vessel_positions
                 {where}
-                LIMIT :limit
+                LIMIT :limit OFFSET :offset
             """),
             params,
         )
@@ -84,7 +101,7 @@ async def list_vessels(
                 ) sub
                 WHERE rn = 1
                 {' AND ' + ' AND '.join(conditions) if conditions else ''}
-                LIMIT :limit
+                LIMIT :limit OFFSET :offset
             """),
             params,
         )
@@ -108,15 +125,15 @@ async def list_vessels(
             }
             for row in rows
         ],
-        "meta": {"total": len(rows), "limit": limit},
+        "meta": {"total": total, "offset": offset, "limit": limit},
     }
 
 
 @router.get("/{mmsi}")
 async def get_vessel_detail(
     mmsi: int,
-    user: dict[str, Any] = Depends(require_auth),
-    db: AsyncSession = Depends(_get_db),
+    user: dict[str, Any] = Depends(check_api_rate_limit),
+    db: AsyncSession = Depends(get_db),
 ):
     """Get full vessel details by MMSI.
 
@@ -167,13 +184,13 @@ async def get_vessel_detail(
 async def get_vessel_trail(
     mmsi: int,
     hours: int = Query(24, le=168),
-    user: dict[str, Any] = Depends(require_auth),
-    db: AsyncSession = Depends(_get_db),
+    user: dict[str, Any] = Depends(check_api_rate_limit),
+    db: AsyncSession = Depends(get_db),
 ):
     """Get vessel trail (position history) for map animation.
 
     Returns positions sorted chronologically (oldest first).
-    Max 168 hours (7 days).
+    Max 168 hours (7 days). Capped at 1000 points.
     """
     result = await db.execute(
         text("""
@@ -181,6 +198,7 @@ async def get_vessel_trail(
             FROM vessel_positions
             WHERE mmsi = :mmsi AND time > NOW() - make_interval(hours => :hours)
             ORDER BY time ASC
+            LIMIT 1000
         """),
         {"mmsi": mmsi, "hours": hours},
     )

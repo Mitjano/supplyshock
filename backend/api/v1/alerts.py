@@ -14,18 +14,11 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from dependencies import get_db
 from middleware.auth import require_auth
+from middleware.rate_limit import check_api_rate_limit
 
 router = APIRouter(prefix="/alerts", tags=["Alerts"])
-
-
-async def _get_db():
-    from main import engine
-    from sqlalchemy.ext.asyncio import async_sessionmaker
-
-    async_session = async_sessionmaker(engine, expire_on_commit=False)
-    async with async_session() as session:
-        yield session
 
 
 @router.get("")
@@ -33,13 +26,14 @@ async def list_alerts(
     alert_type: str | None = Query(None, description="Filter: news_event, ais_anomaly, price_spike"),
     severity: str | None = Query(None, description="Filter: info, warning, critical"),
     commodity: str | None = Query(None),
+    offset: int = Query(0, ge=0),
     limit: int = Query(20, le=100),
-    user: dict[str, Any] = Depends(require_auth),
-    db: AsyncSession = Depends(_get_db),
+    user: dict[str, Any] = Depends(check_api_rate_limit),
+    db: AsyncSession = Depends(get_db),
 ):
     """List recent alerts with optional filters."""
     conditions = []
-    params: dict[str, Any] = {"limit": limit}
+    params: dict[str, Any] = {"limit": limit, "offset": offset}
 
     if alert_type:
         conditions.append("type = :alert_type")
@@ -55,6 +49,13 @@ async def list_alerts(
 
     where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
 
+    # Get total count
+    count_result = await db.execute(
+        text(f"SELECT COUNT(*) FROM alert_events {where}"),
+        params,
+    )
+    total = count_result.scalar()
+
     result = await db.execute(
         text(f"""
             SELECT id, type, severity, commodity, title, body,
@@ -62,7 +63,7 @@ async def list_alerts(
             FROM alert_events
             {where}
             ORDER BY time DESC
-            LIMIT :limit
+            LIMIT :limit OFFSET :offset
         """),
         params,
     )
@@ -84,15 +85,65 @@ async def list_alerts(
             }
             for row in rows
         ],
-        "meta": {"total": len(rows), "limit": limit},
+        "meta": {"total": total, "offset": offset, "limit": limit},
     }
 
 
-async def _sse_generator(request: Request) -> AsyncGenerator[str, None]:
+def _alert_matches_subscriptions(alert_data: dict, subscriptions: list[dict]) -> bool:
+    """Check if an alert matches any of the user's subscriptions.
+
+    Severity ordering: info < warning < critical.
+    A subscription with min_severity='warning' matches warning and critical.
+    """
+    if not subscriptions:
+        return False
+
+    severity_order = {"info": 0, "warning": 1, "critical": 2}
+    alert_severity = alert_data.get("severity", "info")
+    alert_type = alert_data.get("type")
+    alert_commodity = alert_data.get("commodity")
+
+    for sub in subscriptions:
+        # Check commodity filter
+        if sub["commodity"] and sub["commodity"] != alert_commodity:
+            continue
+        # Check alert_type filter
+        if sub["alert_type"] and sub["alert_type"] != alert_type:
+            continue
+        # Check severity threshold
+        min_sev = severity_order.get(sub["min_severity"], 0)
+        alert_sev = severity_order.get(alert_severity, 0)
+        if alert_sev < min_sev:
+            continue
+        return True
+
+    return False
+
+
+async def _load_user_subscriptions(clerk_id: str) -> list[dict]:
+    """Load user's alert subscriptions from DB."""
+    from main import engine
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+
+    async_session = async_sessionmaker(engine, expire_on_commit=False)
+    async with async_session() as db:
+        result = await db.execute(
+            text("""
+                SELECT s.commodity, s.alert_type, s.min_severity
+                FROM user_alert_subscriptions s
+                JOIN users u ON u.id = s.user_id
+                WHERE u.clerk_user_id = :clerk_id
+            """),
+            {"clerk_id": clerk_id},
+        )
+        return [dict(row) for row in result.mappings().all()]
+
+
+async def _sse_generator(request: Request, subscriptions: list[dict]) -> AsyncGenerator[str, None]:
     """Generate SSE events from Redis pub/sub + heartbeat.
 
-    Listens to 'alerts' channel on Redis. Sends heartbeat every 30s.
-    Auto-disconnects after 1 hour.
+    Listens to 'alerts' channel on Redis. Filters alerts based on user's
+    subscriptions. Sends heartbeat every 30s. Auto-disconnects after 1 hour.
     """
     from main import redis_client
 
@@ -119,7 +170,15 @@ async def _sse_generator(request: Request) -> AsyncGenerator[str, None]:
                 data = message["data"]
                 if isinstance(data, bytes):
                     data = data.decode("utf-8")
-                yield f"event: alert\ndata: {data}\n\n"
+
+                # Filter: only send alerts matching user's subscriptions
+                try:
+                    alert_obj = json.loads(data)
+                except (json.JSONDecodeError, TypeError):
+                    alert_obj = {}
+
+                if _alert_matches_subscriptions(alert_obj, subscriptions):
+                    yield f"event: alert\ndata: {data}\n\n"
             else:
                 # Send heartbeat every ~30 iterations (30s with 1s timeout)
                 elapsed = asyncio.get_event_loop().time() - start_time
@@ -139,11 +198,14 @@ async def alerts_stream(
 ):
     """SSE endpoint for live alert feed.
 
-    Sends new alerts as they arrive via Redis pub/sub.
-    Heartbeat every 30s. Auto-closes after 1 hour.
+    Sends new alerts as they arrive via Redis pub/sub, filtered by user's
+    alert subscriptions. Heartbeat every 30s. Auto-closes after 1 hour.
     """
+    clerk_id = user.get("sub")
+    subscriptions = await _load_user_subscriptions(clerk_id)
+
     return StreamingResponse(
-        _sse_generator(request),
+        _sse_generator(request, subscriptions),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",

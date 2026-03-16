@@ -401,11 +401,20 @@ SupplyShock = "Open-Source Commodity Intelligence" (tracking + simulation + AI, 
 | Agricultural Data | 4 | 4 | **100%** |
 | UX & Platform Quality | 10 | 10 | **100%** |
 | Operations & Reliability | 5 | 5 | **100%** |
-| **TOTAL** | **146** | **128** | **88%** |
+| **TOTAL** | **146** | **128** | **65-70%** |
 
-> **Korekta po audycie:** Obniżono kilka % tam gdzie dane źródło ma ostrzeżenie prawne/dostępności (bunker fuel = proxy, ACLED = wymaga licencji, LME = ryzyko prawne). Dodano 15 nowych features w 2 nowych kategoriach (UX, Operations).
+> **Korekta po audycie (March 2026):** Realistic coverage adjusted from 88% to **65-70%** based on the following factors:
+> - Several data sources have licensing/legal barriers (ACLED requires commercial license for SaaS, OpenSanctions non-commercial only, LME scraping has legal risk)
+> - Bunker fuel pricing is a proxy (heating oil futures), not real port-level prices — marked as partial
+> - Several features (COT extremes, seasonal patterns, correlation matrix, port analytics) depend on months of accumulated data before they become useful
+> - pytrends (Google Trends) is an unofficial scraping library — unstable and frequently breaks
+> - LME warehouse stock scraping may violate ToS — legal risk
+> - Many "100%" categories count planned features as done, but frontend is ~15% complete
+> - Satellite AIS gap means open-ocean vessel tracking is missing entirely
+>
+> The 88% number counted planned features as implemented. The 65-70% reflects realistic coverage accounting for data quality, legal access, and implementation completeness.
 
-**88% feature coverage** vs combined Kpler + Argus + Vortexa + Bloomberg, **~55 commodities**, **109 issues**, **40+ darmowych źródeł danych**, przy zerowych kosztach licencji i otwartym kodzie.
+**65-70% realistic feature coverage** vs combined Kpler + Argus + Vortexa + Bloomberg, **~55 commodities**, **119 issues**, **40+ darmowych źródeł danych**, przy zerowych kosztach licencji i otwartym kodzie.
 
 ---
 

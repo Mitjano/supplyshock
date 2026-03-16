@@ -124,6 +124,17 @@ async def stripe_webhook(
         logger.error("Stripe webhook error: %s", e)
         raise HTTPException(400, detail="Invalid payload")
 
+    # Idempotency check: skip already-processed events (24h TTL in Redis)
+    from main import redis_client
+
+    event_id = event.get("id", "")
+    dedup_key = f"stripe_webhook:{event_id}"
+    already_processed = await redis_client.set(dedup_key, "1", ex=86400, nx=True)
+    if not already_processed:
+        # SET NX returned None/False — key already existed, event was processed
+        logger.info("Skipping duplicate Stripe event %s", event_id)
+        return {"status": "duplicate"}
+
     # Get DB session manually (not via Depends in webhook)
     from main import engine
     from sqlalchemy.ext.asyncio import async_sessionmaker

@@ -28,18 +28,34 @@ RECONNECT_MAX = 60  # seconds — max backoff
 POSITION_MESSAGE_TYPES = {"PositionReport", "StandardClassBPositionReport"}
 
 # Map aisstream vessel type codes to our vessel_type enum
-# AIS ship type first digit: 6=passenger, 7=cargo, 8=tanker
+# AIS ship type ranges:
+#   60-69 = passenger vessels
+#   70-79 = cargo (71-74 are typically containers, 75-79 other cargo/bulk)
+#   80-89 = tanker
 VESSEL_TYPE_MAP = {
-    range(60, 70): "container",  # passenger — close enough
-    range(70, 80): "bulk_carrier",
+    # Passenger vessels (AIS 60-69)
+    range(60, 70): "passenger",
+    # Container ships (AIS 71-74 — cellular container ships)
+    range(71, 75): "container",
+    # Bulk carriers and general cargo (AIS 70 and 75-79)
+    # Note: AIS 70 = "cargo, all ships of this type"
+    # We map 70 and 75-79 as bulk_carrier (best available approximation)
+    range(75, 80): "bulk_carrier",
+    # Tanker (AIS 80-89)
     range(80, 90): "tanker",
 }
+
+# Special case: AIS type 70 = generic cargo, map to bulk_carrier
+_AIS_TYPE_70 = "bulk_carrier"
 
 
 def _map_vessel_type(ais_type: int | None) -> str:
     """Map AIS ship type code to our vessel_type enum."""
     if ais_type is None:
         return "other"
+    # Handle AIS type 70 specifically (generic cargo)
+    if ais_type == 70:
+        return _AIS_TYPE_70
     for type_range, vessel_type in VESSEL_TYPE_MAP.items():
         if ais_type in type_range:
             return vessel_type
@@ -105,11 +121,18 @@ def _parse_position(msg: dict) -> dict | None:
 
 
 async def _flush_batch(session: AsyncSession, batch: list[dict]) -> int:
-    """Batch insert positions into vessel_positions. Returns count inserted."""
+    """Batch insert positions into vessel_positions. Returns count inserted.
+
+    TimescaleDB hypertables handle duplicates via the time+mmsi combination
+    (the hypertable chunk partitioning + unique index on (time, mmsi) if configured).
+    If no unique constraint exists, duplicates are possible but harmless for
+    time-series data — each position report is a distinct observation.
+    """
     if not batch:
         return 0
 
-    # Use executemany with parameterized query
+    # Use ON CONFLICT DO NOTHING if a unique constraint on (time, mmsi) exists;
+    # otherwise this is a plain insert (safe for hypertables without unique constraint).
     await session.execute(
         text("""
             INSERT INTO vessel_positions (
@@ -121,6 +144,7 @@ async def _flush_batch(session: AsyncSession, batch: list[dict]) -> int:
                 :latitude, :longitude, :speed_knots, :course, :heading,
                 :destination, :draught, :flag_country, :cargo_type
             )
+            ON CONFLICT DO NOTHING
         """),
         batch,
     )

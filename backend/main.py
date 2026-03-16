@@ -1,3 +1,6 @@
+import sentry_sdk
+from sentry_sdk.integrations.fastapi import FastApiIntegration
+from sentry_sdk.integrations.starlette import StarletteIntegration
 import redis.asyncio as aioredis
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -15,6 +18,19 @@ from api.v1.alert_subscriptions import router as alert_subscriptions_router
 from api.v1.billing import router as billing_router
 from webhooks.stripe import router as stripe_webhook_router
 
+# ── Sentry ──
+if settings.SENTRY_DSN:
+    sentry_sdk.init(
+        dsn=settings.SENTRY_DSN,
+        traces_sample_rate=0.1,
+        profiles_sample_rate=0.1,
+        environment=settings.APP_ENV,
+        integrations=[
+            FastApiIntegration(),
+            StarletteIntegration(),
+        ],
+    )
+
 app = FastAPI(
     title="SupplyShock API",
     version="0.1.0",
@@ -22,9 +38,13 @@ app = FastAPI(
     openapi_url="/openapi.json",
 )
 
+# ── CORS ──
+# Merge configured origins with FRONTEND_URL to ensure the frontend is always allowed
+cors_origins = list(set(settings.CORS_ORIGINS + [settings.FRONTEND_URL]))
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
+    allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

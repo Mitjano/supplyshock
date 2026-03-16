@@ -55,6 +55,14 @@ combining vessel tracking + price signals + supply chain risk.
 | Containers | Docker + Docker Compose | One compose file per environment |
 | CI | GitHub Actions | Lint → test → build → deploy |
 
+### Known Limitations (from March 2026 audit)
+- EIA API uses v2 format — series IDs differ from v1
+- Satellite AIS not available — terrestrial only (coastal coverage)
+- yfinance is unofficial with no SLA — backup sources needed
+- commodity_type and alert_type are TEXT with CHECK (not ENUM) for extensibility
+- Single-server deployment — scale-out not yet designed
+- Frontend is ~15% complete — needs M1 full build
+
 ---
 
 ## Directory structure

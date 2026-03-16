@@ -13,7 +13,9 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import settings
+from dependencies import get_db
 from middleware.auth import require_auth
+from middleware.rate_limit import check_api_rate_limit
 
 router = APIRouter(prefix="/billing", tags=["Billing"])
 
@@ -26,26 +28,17 @@ PLAN_PRICES: dict[str, str] = {
 }
 
 
-async def _get_db():
-    from main import engine
-    from sqlalchemy.ext.asyncio import async_sessionmaker
-
-    async_session = async_sessionmaker(engine, expire_on_commit=False)
-    async with async_session() as session:
-        yield session
-
-
 class CheckoutRequest(BaseModel):
     plan: str  # "pro", "business", "enterprise"
-    success_url: str = "http://localhost:5173/settings?billing=success"
-    cancel_url: str = "http://localhost:5173/settings?billing=cancel"
+    success_url: str | None = None
+    cancel_url: str | None = None
 
 
 @router.post("/checkout")
 async def create_checkout_session(
     body: CheckoutRequest,
-    user: dict[str, Any] = Depends(require_auth),
-    db: AsyncSession = Depends(_get_db),
+    user: dict[str, Any] = Depends(check_api_rate_limit),
+    db: AsyncSession = Depends(get_db),
 ):
     """Create a Stripe Checkout session for plan upgrade."""
     if body.plan not in PLAN_PRICES:
@@ -79,12 +72,15 @@ async def create_checkout_session(
         )
         await db.commit()
 
+    success_url = body.success_url or f"{settings.FRONTEND_URL}/settings?billing=success"
+    cancel_url = body.cancel_url or f"{settings.FRONTEND_URL}/settings?billing=cancel"
+
     session = stripe.checkout.Session.create(
         customer=customer_id,
         mode="subscription",
         line_items=[{"price": PLAN_PRICES[body.plan], "quantity": 1}],
-        success_url=body.success_url,
-        cancel_url=body.cancel_url,
+        success_url=success_url,
+        cancel_url=cancel_url,
         metadata={"clerk_user_id": clerk_id, "plan": body.plan},
     )
 
@@ -93,8 +89,8 @@ async def create_checkout_session(
 
 @router.post("/portal")
 async def create_portal_session(
-    user: dict[str, Any] = Depends(require_auth),
-    db: AsyncSession = Depends(_get_db),
+    user: dict[str, Any] = Depends(check_api_rate_limit),
+    db: AsyncSession = Depends(get_db),
 ):
     """Create a Stripe Customer Portal session for managing subscription."""
     clerk_id = user.get("sub")
@@ -109,7 +105,7 @@ async def create_portal_session(
 
     session = stripe.billing_portal.Session.create(
         customer=user_row["stripe_customer_id"],
-        return_url="http://localhost:5173/settings",
+        return_url=f"{settings.FRONTEND_URL}/settings",
     )
 
     return {"data": {"portal_url": session.url}}
