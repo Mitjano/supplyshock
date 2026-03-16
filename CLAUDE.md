@@ -83,10 +83,31 @@ supplyshock/
 │   │       ├── reports.py
 │   │       └── billing.py
 │   ├── ingestion/
-│   │   ├── ais_stream.py      ← aisstream.io WebSocket consumer
+│   │   ├── ais_stream.py      ← aisstream.io WebSocket consumer (Type 1/2/3/5/18)
 │   │   ├── gdelt.py           ← GDELT news poller (15min interval)
-│   │   ├── eia.py             ← EIA energy data
-│   │   └── comtrade.py        ← UN Comtrade trade flows
+│   │   ├── eia.py             ← EIA energy data (prices)
+│   │   ├── eia_inventories.py ← EIA weekly inventories + natgas + SPR (#65, #83)
+│   │   ├── comtrade.py        ← UN Comtrade trade flows
+│   │   ├── yfinance_unified.py ← ALL yfinance fetches: futures, forward curves, carbon, bunker proxy (#61,#69,#85,#87)
+│   │   ├── fred_unified.py    ← ALL FRED fetches: spot prices, monthly, macro indicators (#62, #86)
+│   │   ├── cftc_cot.py        ← CFTC Commitment of Traders weekly (#64)
+│   │   ├── world_bank_prices.py ← World Bank Pink Sheet fertilizers (#63)
+│   │   ├── imf_portwatch.py   ← IMF PortWatch chokepoint transits (#76)
+│   │   ├── dbnomics.py        ← DBnomics gateway: IMF/OECD/Eurostat (#77)
+│   │   ├── frankfurter_fx.py  ← FX rates + DXY proxy (#78)
+│   │   ├── acled.py           ← Conflict events near infrastructure (#79) ⚠️ needs commercial license
+│   │   ├── gpr_index.py       ← Geopolitical Risk Index (#80)
+│   │   ├── baker_hughes.py    ← Weekly rig count (#81)
+│   │   ├── jodi.py            ← JODI oil S/D (#82) ⚠️ no programmatic API
+│   │   ├── usda.py            ← USDA NASS crop progress + FAS export sales (#84)
+│   │   ├── carbon_prices.py   ← EU ETS, UK ETS via Ember + yfinance (#85)
+│   │   ├── bunker_fuel.py     ← Bunker fuel price PROXY via heating oil (#87)
+│   │   ├── sanctions.py       ← OFAC + EU + OpenSanctions (#52, #88)
+│   │   ├── google_trends.py   ← pytrends sentiment proxy (#89) ⚠️ unstable
+│   │   ├── cpb_trade.py       ← CPB World Trade Monitor (#90)
+│   │   ├── lme_stocks.py      ← LME warehouse stocks (#90) ⚠️ legal risk
+│   │   ├── voyage_detector.py ← Automatic voyage detection (#41)
+│   │   └── equasis.py         ← Vessel ownership lookup (#57)
 │   ├── simulation/
 │   │   ├── engine.py          ← OASIS orchestration
 │   │   ├── tasks.py           ← Celery tasks
@@ -105,17 +126,35 @@ supplyshock/
 │
 ├── frontend/
 │   ├── src/
-│   │   ├── views/             ← Map, Commodities, Bottlenecks, Simulation, Reports
+│   │   ├── views/             ← HomeDashboard, Map, Commodities, AnalyticsDashboard, MacroDashboard,
+│   │   │                         FleetAnalytics, ComplianceDashboard, Simulation, EventReplay,
+│   │   │                         EmissionsDashboard, AlertCenter, Settings
 │   │   ├── components/
-│   │   ├── layouts/           ← LocaleLayout.vue (locale guard)
-│   │   ├── composables/       ← useLocale.ts, usePageMeta.ts
-│   │   ├── stores/            ← Pinia stores (useAuthStore, useMapStore, etc.)
+│   │   │   ├── charts/        ← BaseTimeSeriesChart, BaseHeatmap, BaseCandlestick, BaseBarChart,
+│   │   │   │                     TimeRangeSelector (Apache ECharts — #92)
+│   │   │   ├── ui/            ← DataTable, StatCard, FilterBar, DetailPanel, LoadingSkeleton,
+│   │   │   │                     EmptyState, ErrorState, Badge, GlobalSearch, WatchlistStar (#93, #99, #101)
+│   │   │   ├── map/           ← VesselLayer, InfrastructureLayer, WeatherLayer, ConflictLayer
+│   │   │   ├── analytics/     ← COTChart, InventoryChart, CrackSpreadChart, CorrelationMatrix,
+│   │   │   │                     SeasonalChart, ForwardCurveChart, BalanceChart, RigCountChart,
+│   │   │   │                     NatGasStorageChart, SPRTracker, CropProgressChart, CarbonPriceChart,
+│   │   │   │                     BunkerPriceChart, GPRChart, WarehouseStocksChart, WorldTradeChart
+│   │   │   └── dashboard/     ← MarketHeatmap, WatchlistPanel, RecentAlerts (#95)
+│   │   ├── layouts/           ← AppLayout (sidebar nav), LocaleLayout (locale guard), Breadcrumbs (#94)
+│   │   ├── composables/       ← useLocale.ts, usePageMeta.ts, useDataState.ts
+│   │   ├── stores/            ← Pinia stores (useAuthStore, useMapStore, useWatchlistStore,
+│   │   │                         useAlertStore, useDashboardStore, useEmissionsStore, etc.)
+│   │   ├── workers/           ← correlation-worker.ts (Web Worker for heavy computation)
+│   │   ├── utils/             ← chart-downsample.ts (LTTB algorithm)
 │   │   ├── api/               ← typed API client (auto-generated from openapi.yaml)
+│   │   ├── router/            ← index.ts + analytics.ts sub-routes (lazy loading per view)
 │   │   ├── i18n.ts            ← vue-i18n config, lazy loading per locale
 │   │   └── locales/
 │   │       ├── pl/            ← common, map, commodities, bottlenecks, simulation, reports, billing, auth
 │   │       └── en/            ← same keys, natural English translations
-│   └── tests/
+│   ├── tests/
+│   │   └── e2e/               ← Playwright smoke tests (#105)
+│   └── playwright.config.ts
 │
 └── infra/
     ├── nginx.conf
@@ -132,7 +171,25 @@ supplyshock/
 - `alert_events` — partition by `time` (1 week chunks)
 
 **PostgreSQL tables** (relational, low insert rate):
-- `users`, `subscriptions`, `api_keys`, `simulations`, `reports`, `ports`, `trade_flows`
+- Core: `users`, `subscriptions`, `api_keys`, `simulations`, `reports`, `ports`, `trade_flows`
+- M5 voyage: `vessel_static_data`, `voyages`, `sanctioned_entities`
+- M5 analytics: `cot_reports`, `eia_inventories`, `forward_curves`, `supply_demand_balance`
+- M5 infra: `infrastructure_assets`, `historical_events`, `port_analytics`
+- M6 data: `macro_indicators`, `fx_rates`, `conflict_events`, `rig_counts`, `crop_data`, `bunker_prices`, `warehouse_stocks`, `chokepoint_transits`, `user_watchlist`
+
+**DB retention policies** (see #104):
+- `vessel_positions`: 90 days, compress after 7 days (~10x compression)
+- `port_analytics`: 365 days, compress after 30 days
+- `alert_events`: 365 days
+- `conflict_events`: 730 days (2 years)
+- `commodity_prices`, `fx_rates`, `cot_reports`: keep forever (small volume)
+
+**Column naming conventions:**
+- Time columns: always `time TIMESTAMPTZ` (not `date`, `period`, `report_date`)
+- Coordinates: always `latitude DOUBLE PRECISION`, `longitude DOUBLE PRECISION` (not `lat`/`lon`)
+- Primary keys: `id UUID DEFAULT gen_random_uuid()`
+- Foreign keys: explicit `REFERENCES table(id)` always
+- All tables with `updated_at` need `set_updated_at` trigger
 
 
 **Alembic migrations** — how to work with schema changes:
@@ -213,6 +270,7 @@ the codebase, remove it immediately and rotate the key.
 
 **Required env vars** (all in `.env.example`):
 ```
+# Core
 CLERK_SECRET_KEY=
 CLERK_PUBLISHABLE_KEY=
 STRIPE_SECRET_KEY=
@@ -220,16 +278,24 @@ STRIPE_WEBHOOK_SECRET=
 CLAUDE_API_KEY=
 MAPBOX_ACCESS_TOKEN=
 AISSTREAM_API_KEY=
-EIA_API_KEY=
 DATABASE_URL=
 REDIS_URL=
 RESEND_API_KEY=
 ZEP_API_KEY=
-COMTRADE_API_KEY=
 STRIPE_PRICE_PRO=
 STRIPE_PRICE_BUSINESS=
 CLERK_WEBHOOK_SECRET=
 SUPPLYSHOCK_DB_URL=         # same as DATABASE_URL — used by oasis_fork toolkits
+
+# Data ingestion API keys (M5/M6)
+EIA_API_KEY=                # EIA energy data (free, https://www.eia.gov/opendata/)
+FRED_API_KEY=               # FRED economic data (free, https://fred.stlouisfed.org/docs/api/)
+COMTRADE_API_KEY=           # UN Comtrade trade flows
+GEMINI_API_KEY=             # Gemini 2.5 Flash for AI chat (#50)
+USDA_NASS_KEY=              # USDA crop data (free, https://quickstats.nass.usda.gov/api/)
+USDA_FAS_KEY=               # USDA export sales (free, https://apps.fas.usda.gov/OpenData/)
+ACLED_API_KEY=              # Conflict data (⚠️ requires commercial license for SaaS)
+SENTRY_DSN=                 # Error monitoring (#38)
 ```
 
 **Input validation:** Use Pydantic models for all request bodies. No raw `request.json()`
@@ -266,6 +332,15 @@ Limits enforced per user per endpoint category, tracked in Redis:
 **Implementation:** `middleware/rate_limit.py` uses Redis key `rl:{user_id}:{endpoint_group}:{period}`
 with TTL matching the period. Returns 429 with `Retry-After` header on breach.
 
+**Redis key namespaces** (see #106):
+- `vessel:{mmsi}:*` — vessel state (last_port, last_position)
+- `cache:correlation:{window}` — correlation matrix cache (1h TTL)
+- `cache:weather:{lat}:{lon}` — weather cache (15min TTL)
+- `ratelimit:{user_id}:*` — API rate limit counters
+- `sse:{channel}:*` — SSE pub/sub channels
+- `task:lock:{task_name}` — distributed lock for Celery tasks
+- Every key MUST have a TTL. `maxmemory-policy: allkeys-lru`.
+
 ---
 
 ## Stripe billing rules
@@ -294,13 +369,23 @@ an event without signature verification.
 **Long-running operations go to Celery, never block the HTTP thread:**
 - Simulation runs (`simulation/tasks.py`)
 - PDF report generation
-- Batch data ingestion
+- All data ingestion tasks (35+ scheduled tasks)
+
+**Task queues** (3 queues, 3 workers — see #103):
+- `ais` — AIS processing, voyage detection, spoofing detection (high priority, 2 concurrent)
+- `ingestion` — all external data fetches: yfinance, FRED, EIA, GDELT, etc. (medium priority, 4 concurrent)
+- `analytics` — correlation matrix, crack spreads, port analytics, price anomalies (low priority, 2 concurrent, CPU-heavy)
+
+**Consolidated ingestion tasks** (see architectural decisions in GITHUB_ISSUES.md):
+- `fetch_all_yfinance` — single task for ALL yfinance calls (#61, #69, #85, #87), max 5 req/sec
+- `fetch_all_fred` — single task for ALL FRED calls (#62, #86), max 60 series/run, 0.5s delay
 
 **Task result polling:** Client polls `GET /api/v1/simulations/{job_id}` which reads
 Celery task state from Redis. For progress streaming: use Server-Sent Events (SSE)
 on `GET /api/v1/simulations/{job_id}/stream`.
 
 **Task timeout:** Simulations timeout after 10 minutes. Reports after 2 minutes.
+Ingestion tasks: 5 minutes. Analytics tasks: 10 minutes.
 Always set `task_time_limit` in Celery task decorator.
 
 ---
@@ -414,7 +499,22 @@ Pisz naturalnie (native English), nie tłumacz dosłownie z polskiego.
 or `axios` in components. The API client is generated from `openapi.yaml`.
 
 **State management:** Pinia stores for: `useAuthStore`, `useMapStore`,
-`useCommoditiesStore`, `useAlertsStore`, `useSimulationStore`.
+`useCommoditiesStore`, `useAlertsStore`, `useSimulationStore`, `useWatchlistStore`,
+`useDashboardStore`, `useEmissionsStore`, `useFleetStore`, `useComplianceStore`, `useEventStore`.
+
+**Charting library:** Apache ECharts via `vue-echarts` (#92). ALL charts use shared
+BaseChart components from `components/charts/`. Never create a chart without extending
+BaseTimeSeriesChart, BaseHeatmap, BaseCandlestick, or BaseBarChart.
+
+**Design system:** Shared UI components in `components/ui/` (#93). Use DataTable for all
+tables, StatCard for all metric displays, FilterBar for all filter UIs.
+
+**Navigation:** Collapsible left sidebar (#94) with sections: Map, Commodities, Analytics,
+Macro, Energy, Agriculture, Fleet & Ports, Compliance, Simulation, Events, Settings.
+
+**Alert system:** Alerts use 3 priority tiers (#97): P1 (critical, immediate push),
+P2 (warning, hourly batch), P3 (info, daily digest only). `alert_type` is TEXT with
+CHECK constraint (not ENUM) — see #91.
 
 **WebSocket / SSE:** Live data (vessel positions, alert feed) uses SSE from backend.
 Connect in the relevant Pinia store, not in components.
@@ -497,9 +597,18 @@ When starting a new session:
 1. Read this file
 2. Read `openapi.yaml` for any endpoint you're about to build
 3. Read `schema.sql` for any database table you're about to use
-4. For simulation work: read `OASIS_MODIFICATIONS.md` before touching `oasis_fork/`
-5. Check the relevant GitHub Issue for acceptance criteria before writing code
-6. Run tests after every change: `docker compose exec backend pytest -x`
+4. Read `GITHUB_ISSUES.md` for the full implementation plan (109 issues, M0-M6)
+5. Read `FEATURE_COMPARISON.md` for competitive context and feature coverage
+6. For simulation work: read `OASIS_MODIFICATIONS.md` before touching `oasis_fork/`
+7. Check the relevant GitHub Issue for acceptance criteria before writing code
+8. Run tests after every change: `docker compose exec backend pytest -x`
+
+**Key architectural decisions** (documented in GITHUB_ISSUES.md):
+- `alert_type` is TEXT with CHECK constraint (NOT ENUM) — see #91
+- yfinance and FRED calls are consolidated into single Celery tasks — see architectural decisions
+- Commodity price source priority: yfinance > FRED daily > EIA > Nasdaq > FRED monthly > World Bank
+- AI Chat: Gemini 2.5 Flash (primary) + Claude Haiku 4.5 (fallback)
+- Frontend: Apache ECharts for all charts, PrimeVue/Naive UI for UI components
 
 When creating a new endpoint:
 1. Add it to `openapi.yaml` first
