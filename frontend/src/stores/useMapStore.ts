@@ -11,8 +11,11 @@ interface VesselPosition {
   longitude: number
   speed_knots: number | null
   course: number | null
+  heading: number | null
   destination: string | null
   flag_country: string | null
+  dwt: number | null
+  draught: number | null
   time: string
 }
 
@@ -39,14 +42,48 @@ interface TradeFlow {
   }
 }
 
+interface Bottleneck {
+  slug: string
+  name: string
+  type: string
+  country: string
+  risk: number
+  vessel_count: number | null
+  latitude: number | null
+  longitude: number | null
+}
+
+interface Alert {
+  id: string
+  title: string
+  severity: string
+  type: string
+  commodity: string | null
+  region: string | null
+  created_at: string
+}
+
+interface TrailPoint {
+  latitude: number
+  longitude: number
+  time: string
+  speed_knots: number | null
+}
+
 export const useMapStore = defineStore('map', () => {
   const vessels = ref<VesselPosition[]>([])
   const ports = ref<Port[]>([])
   const tradeFlows = ref<TradeFlow[]>([])
+  const bottlenecks = ref<Bottleneck[]>([])
+  const alerts = ref<Alert[]>([])
   const loading = ref(false)
+  const error = ref<string | null>(null)
   const selectedVessel = ref<VesselPosition | null>(null)
   const vesselTypeFilter = ref<string | null>(null)
   const commodityFilter = ref<string | null>(null)
+  const lastUpdated = ref<Date | null>(null)
+  const vesselTrail = ref<TrailPoint[]>([])
+  const trailLoading = ref(false)
 
   const filteredVessels = computed(() => {
     if (!vesselTypeFilter.value) return vessels.value
@@ -74,9 +111,15 @@ export const useMapStore = defineStore('map', () => {
       if (res.ok) {
         const body = await res.json()
         vessels.value = body.data
+        lastUpdated.value = new Date()
+        error.value = null
+      } else {
+        throw new Error(`HTTP ${res.status}`)
       }
     } catch (e) {
       console.error('Failed to fetch vessels:', e)
+      error.value = 'vessels'
+      throw e
     }
   }
 
@@ -90,6 +133,7 @@ export const useMapStore = defineStore('map', () => {
       }
     } catch (e) {
       console.error('Failed to fetch ports:', e)
+      throw e
     }
   }
 
@@ -106,6 +150,58 @@ export const useMapStore = defineStore('map', () => {
       }
     } catch (e) {
       console.error('Failed to fetch trade flows:', e)
+      throw e
+    }
+  }
+
+  async function fetchBottlenecks() {
+    const headers = await getHeaders()
+    try {
+      const res = await fetch(`${apiBase}/api/v1/bottlenecks`, { headers })
+      if (res.ok) {
+        const body = await res.json()
+        bottlenecks.value = body.data
+      } else {
+        throw new Error(`HTTP ${res.status}`)
+      }
+    } catch (e) {
+      console.error('Failed to fetch bottlenecks:', e)
+      throw e
+    }
+  }
+
+  async function fetchAlerts(limit = 10) {
+    const headers = await getHeaders()
+    try {
+      const res = await fetch(`${apiBase}/api/v1/alerts?limit=${limit}`, { headers })
+      if (res.ok) {
+        const body = await res.json()
+        alerts.value = body.data
+      } else {
+        throw new Error(`HTTP ${res.status}`)
+      }
+    } catch (e) {
+      console.error('Failed to fetch alerts:', e)
+      throw e
+    }
+  }
+
+  async function fetchVesselTrail(mmsi: number) {
+    const headers = await getHeaders()
+    trailLoading.value = true
+    try {
+      const res = await fetch(`${apiBase}/api/v1/vessels/${mmsi}/trail`, { headers })
+      if (res.ok) {
+        const body = await res.json()
+        vesselTrail.value = body.data
+      } else {
+        throw new Error(`HTTP ${res.status}`)
+      }
+    } catch (e) {
+      console.error('Failed to fetch vessel trail:', e)
+      throw e
+    } finally {
+      trailLoading.value = false
     }
   }
 
@@ -124,20 +220,30 @@ export const useMapStore = defineStore('map', () => {
 
   function clearSelection() {
     selectedVessel.value = null
+    vesselTrail.value = []
   }
 
   return {
     vessels,
     ports,
     tradeFlows,
+    bottlenecks,
+    alerts,
     loading,
+    error,
     selectedVessel,
     vesselTypeFilter,
     commodityFilter,
+    lastUpdated,
+    vesselTrail,
+    trailLoading,
     filteredVessels,
     fetchVessels,
     fetchPorts,
     fetchTradeFlows,
+    fetchBottlenecks,
+    fetchAlerts,
+    fetchVesselTrail,
     selectVessel,
     clearSelection,
   }

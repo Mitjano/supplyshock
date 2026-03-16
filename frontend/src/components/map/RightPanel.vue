@@ -1,7 +1,7 @@
 <template>
   <div class="right-panel" :class="{ collapsed: isCollapsed }">
     <button class="toggle-btn" @click="isCollapsed = !isCollapsed">
-      {{ isCollapsed ? '◀' : '▶' }}
+      {{ isCollapsed ? '\u25C0' : '\u25B6' }}
     </button>
 
     <div v-if="!isCollapsed" class="panel-content">
@@ -11,7 +11,7 @@
           :key="tab.id"
           class="tab-btn"
           :class="{ active: activeTab === tab.id }"
-          @click="activeTab = tab.id"
+          @click="switchTab(tab.id)"
         >
           {{ tab.label }}
         </button>
@@ -19,28 +19,51 @@
 
       <!-- Chokepoints tab -->
       <div v-if="activeTab === 'chokepoints'" class="tab-content">
-        <div v-for="node in chokepoints" :key="node.slug" class="item-card">
-          <div class="item-header">
-            <span class="item-name">{{ node.name }}</span>
-            <span class="risk-badge" :class="riskClass(node.risk)">{{ node.risk }}</span>
-          </div>
-          <div class="item-meta">
-            {{ node.type }} · {{ node.country }}
-            <span v-if="node.vesselCount" class="vessel-count">{{ node.vesselCount }} vessels</span>
-          </div>
+        <div v-if="chokepointsLoading" class="loading-state">
+          <div class="mini-spinner"></div>
+          <span>{{ t('map.loadingBottlenecks') }}</span>
         </div>
+        <div v-else-if="chokepointsError" class="error-state">
+          <i class="pi pi-exclamation-circle"></i>
+          <span>{{ t('map.errorBottlenecks') }}</span>
+          <button class="retry-btn" @click="loadBottlenecks">{{ t('common.retry') }}</button>
+        </div>
+        <template v-else>
+          <div v-for="node in chokepoints" :key="node.slug" class="item-card">
+            <div class="item-header">
+              <span class="item-name">{{ node.name }}</span>
+              <span class="risk-badge" :class="riskClass(node.risk)">{{ node.risk }}</span>
+            </div>
+            <div class="item-meta">
+              {{ node.type }} &middot; {{ node.country }}
+              <span v-if="node.vessel_count" class="vessel-count">{{ node.vessel_count }} {{ t('map.vessels').toLowerCase() }}</span>
+            </div>
+          </div>
+          <div v-if="!chokepoints.length" class="empty-state">{{ t('common.noData') }}</div>
+        </template>
       </div>
 
       <!-- Alerts tab -->
       <div v-if="activeTab === 'alerts'" class="tab-content">
-        <div v-for="alert in alerts" :key="alert.id" class="item-card">
-          <div class="item-header">
-            <span class="item-name">{{ alert.title }}</span>
-            <span class="severity-badge" :class="alert.severity">{{ alert.severity }}</span>
-          </div>
-          <div class="item-meta">{{ alert.time }}</div>
+        <div v-if="alertsLoading" class="loading-state">
+          <div class="mini-spinner"></div>
+          <span>{{ t('map.loadingAlerts') }}</span>
         </div>
-        <div v-if="!alerts.length" class="empty-state">No recent alerts</div>
+        <div v-else-if="alertsError" class="error-state">
+          <i class="pi pi-exclamation-circle"></i>
+          <span>{{ t('map.errorAlerts') }}</span>
+          <button class="retry-btn" @click="loadAlerts">{{ t('common.retry') }}</button>
+        </div>
+        <template v-else>
+          <div v-for="alert in alerts" :key="alert.id" class="item-card">
+            <div class="item-header">
+              <span class="item-name">{{ alert.title }}</span>
+              <span class="severity-badge" :class="alert.severity">{{ alert.severity }}</span>
+            </div>
+            <div class="item-meta">{{ formatTime(alert.created_at) }}</div>
+          </div>
+          <div v-if="!alerts.length" class="empty-state">{{ t('map.noAlerts') }}</div>
+        </template>
       </div>
 
       <!-- Flows tab -->
@@ -48,14 +71,14 @@
         <table class="flows-table">
           <thead>
             <tr>
-              <th>Route</th>
-              <th>Commodity</th>
-              <th>Volume</th>
+              <th>{{ t('map.route') }}</th>
+              <th>{{ t('map.commodity') }}</th>
+              <th>{{ t('map.volume') }}</th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="(flow, i) in topFlows" :key="i">
-              <td>{{ flow.origin }} → {{ flow.destination }}</td>
+              <td>{{ flow.origin }} &rarr; {{ flow.destination }}</td>
               <td>
                 <span class="commodity-dot" :style="{ background: commodityColor(flow.commodity) }"></span>
                 {{ formatCommodity(flow.commodity) }}
@@ -64,38 +87,36 @@
             </tr>
           </tbody>
         </table>
+        <div v-if="!topFlows.length" class="empty-state">{{ t('common.noData') }}</div>
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useMapStore } from '../../stores/useMapStore'
 
+const { t } = useI18n()
 const mapStore = useMapStore()
 const isCollapsed = ref(false)
 const activeTab = ref('chokepoints')
 
-const tabs = [
-  { id: 'chokepoints', label: 'Chokepoints' },
-  { id: 'alerts', label: 'Alerts' },
-  { id: 'flows', label: 'Flows' },
-]
+const chokepointsLoading = ref(false)
+const chokepointsError = ref(false)
+const alertsLoading = ref(false)
+const alertsError = ref(false)
 
-// Placeholder chokepoints — will be replaced with API data
-const chokepoints = ref([
-  { slug: 'strait_hormuz', name: 'Strait of Hormuz', type: 'strait', country: 'OM', risk: 9, vesselCount: 42 },
-  { slug: 'strait_malacca', name: 'Strait of Malacca', type: 'strait', country: 'SG', risk: 7, vesselCount: 85 },
-  { slug: 'suez_canal', name: 'Suez Canal', type: 'strait', country: 'EG', risk: 8, vesselCount: 31 },
-  { slug: 'panama_canal', name: 'Panama Canal', type: 'strait', country: 'PA', risk: 6, vesselCount: 18 },
-  { slug: 'bab_el_mandeb', name: 'Bab el-Mandeb', type: 'strait', country: 'DJ', risk: 8, vesselCount: 22 },
-  { slug: 'turkish_straits', name: 'Turkish Straits', type: 'strait', country: 'TR', risk: 6, vesselCount: 15 },
-  { slug: 'cape_good_hope', name: 'Cape of Good Hope', type: 'strait', country: 'ZA', risk: 4, vesselCount: 60 },
+const tabs = computed(() => [
+  { id: 'chokepoints', label: t('map.chokepoints') },
+  { id: 'alerts', label: t('map.alerts') },
+  { id: 'flows', label: t('map.flows') },
 ])
 
-// Placeholder alerts
-const alerts = ref<Array<{ id: string; title: string; severity: string; time: string }>>([])
+// Real data from store
+const chokepoints = computed(() => mapStore.bottlenecks)
+const alerts = computed(() => mapStore.alerts)
 
 const topFlows = computed(() => {
   return mapStore.tradeFlows.slice(0, 6).map(f => ({
@@ -116,8 +137,58 @@ const COMMODITY_COLORS: Record<string, string> = {
 
 function commodityColor(c: string) { return COMMODITY_COLORS[c] || '#6b7280' }
 function formatCommodity(c: string) { return c.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) }
-function formatVolume(v: number | null) { return v ? `${(v / 1000).toFixed(0)}k MT` : '—' }
+function formatVolume(v: number | null) { return v ? `${(v / 1000).toFixed(0)}k MT` : '\u2014' }
 function riskClass(risk: number) { return risk >= 8 ? 'high' : risk >= 5 ? 'medium' : 'low' }
+
+function formatTime(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime()
+  const minutes = Math.floor(diff / 60000)
+  if (minutes < 1) return t('alerts.justNow')
+  if (minutes < 60) return t('alerts.minutesAgo', { n: minutes })
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return t('alerts.hoursAgo', { n: hours })
+  return t('alerts.daysAgo', { n: Math.floor(hours / 24) })
+}
+
+async function loadBottlenecks() {
+  chokepointsLoading.value = true
+  chokepointsError.value = false
+  try {
+    await mapStore.fetchBottlenecks()
+  } catch {
+    chokepointsError.value = true
+  } finally {
+    chokepointsLoading.value = false
+  }
+}
+
+async function loadAlerts() {
+  alertsLoading.value = true
+  alertsError.value = false
+  try {
+    await mapStore.fetchAlerts(10)
+  } catch {
+    alertsError.value = true
+  } finally {
+    alertsLoading.value = false
+  }
+}
+
+function switchTab(id: string) {
+  activeTab.value = id
+  // Lazy-load tab data on first visit
+  if (id === 'chokepoints' && !chokepoints.value.length && !chokepointsLoading.value) {
+    loadBottlenecks()
+  }
+  if (id === 'alerts' && !alerts.value.length && !alertsLoading.value) {
+    loadAlerts()
+  }
+}
+
+onMounted(() => {
+  // Load chokepoints on mount since it's the default tab
+  loadBottlenecks()
+})
 </script>
 
 <style scoped>
@@ -133,6 +204,7 @@ function riskClass(risk: number) { return risk >= 8 ? 'high' : risk >= 5 ? 'medi
   transition: width 0.2s;
   display: flex;
   flex-direction: column;
+  backdrop-filter: blur(8px);
 }
 
 .right-panel.collapsed {
@@ -174,6 +246,11 @@ function riskClass(risk: number) { return risk >= 8 ? 'high' : risk >= 5 ? 'medi
   font-size: 0.8rem;
   cursor: pointer;
   border-bottom: 2px solid transparent;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.tab-btn:hover {
+  color: #94a3b8;
 }
 
 .tab-btn.active {
@@ -185,9 +262,69 @@ function riskClass(risk: number) { return risk >= 8 ? 'high' : risk >= 5 ? 'medi
   padding: 0.75rem;
 }
 
+/* Loading & error states */
+.loading-state {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 1.5rem;
+  color: #64748b;
+  font-size: 0.85rem;
+}
+
+.mini-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(59, 130, 246, 0.2);
+  border-top-color: #3b82f6;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.error-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 1.5rem;
+  color: #f87171;
+  font-size: 0.85rem;
+  text-align: center;
+}
+
+.error-state i {
+  font-size: 1.5rem;
+}
+
+.retry-btn {
+  background: rgba(59, 130, 246, 0.15);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  border-radius: 6px;
+  color: #60a5fa;
+  padding: 0.4rem 1rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+  margin-top: 0.25rem;
+  transition: background 0.15s;
+}
+
+.retry-btn:hover {
+  background: rgba(59, 130, 246, 0.25);
+}
+
 .item-card {
   padding: 0.75rem;
   border-bottom: 1px solid #1e293b;
+  transition: background 0.15s;
+}
+
+.item-card:hover {
+  background: rgba(30, 41, 59, 0.5);
 }
 
 .item-header {
@@ -249,6 +386,10 @@ function riskClass(risk: number) { return risk >= 8 ? 'high' : risk >= 5 ? 'medi
   color: #cbd5e1;
   padding: 0.5rem 0.25rem;
   border-bottom: 1px solid #0f172a;
+}
+
+.flows-table tr:hover td {
+  background: rgba(30, 41, 59, 0.4);
 }
 
 .commodity-dot {

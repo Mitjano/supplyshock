@@ -53,12 +53,12 @@ export const useBottleneckStore = defineStore('bottleneck', () => {
     const headers = await getHeaders()
     try {
       const res = await fetch(`${apiBase}/api/v1/bottlenecks`, { headers })
-      if (res.ok) {
-        const body = await res.json()
-        bottlenecks.value = body.data
-      }
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const body = await res.json()
+      bottlenecks.value = body.data
     } catch (e) {
       console.error('Failed to fetch bottlenecks:', e)
+      throw e
     }
   }
 

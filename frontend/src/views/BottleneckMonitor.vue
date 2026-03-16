@@ -1,28 +1,74 @@
 <template>
-  <div class="bottleneck-monitor">
-    <div class="list-panel">
+  <div class="bottleneck-monitor" :class="{ 'detail-open': !!store.selectedBottleneck }">
+    <!-- Left Panel: Bottleneck List -->
+    <aside class="list-panel" :class="{ 'mobile-hidden': mobileShowDetail }">
       <header class="panel-header">
-        <h1>Bottleneck Monitor</h1>
-        <span class="node-count">{{ store.bottlenecks.length }} nodes</span>
+        <div class="header-top">
+          <h1>{{ t('bottleneck.title') }}</h1>
+          <span class="node-count">{{ filteredNodes.length }} {{ t('bottleneck.nodes') }}</span>
+        </div>
+        <div class="search-wrapper">
+          <i class="pi pi-search search-icon" />
+          <input
+            v-model="searchQuery"
+            type="text"
+            class="search-input"
+            :placeholder="t('common.search')"
+          />
+          <button v-if="searchQuery" class="search-clear" @click="searchQuery = ''">
+            <i class="pi pi-times" />
+          </button>
+        </div>
       </header>
 
-      <div class="bottleneck-list">
+      <!-- Loading skeleton -->
+      <div v-if="listLoading" class="bottleneck-list">
+        <div v-for="i in 6" :key="i" class="node-card skeleton-card">
+          <div class="skeleton-line skeleton-title" />
+          <div class="skeleton-line skeleton-meta" />
+          <div class="skeleton-line skeleton-bar" />
+          <div class="skeleton-tags">
+            <div class="skeleton-tag" />
+            <div class="skeleton-tag" />
+          </div>
+        </div>
+      </div>
+
+      <!-- Error state -->
+      <div v-else-if="listError" class="list-error">
+        <i class="pi pi-exclamation-triangle error-icon" />
+        <p>{{ t('common.error') }}</p>
+        <button class="retry-btn" @click="loadBottlenecks">
+          <i class="pi pi-refresh" /> {{ t('common.retry') }}
+        </button>
+      </div>
+
+      <!-- Bottleneck list -->
+      <div v-else class="bottleneck-list">
+        <div v-if="filteredNodes.length === 0" class="empty-list">
+          <i class="pi pi-search" />
+          <p>{{ t('bottleneck.noResults') }}</p>
+        </div>
         <div
-          v-for="node in store.sortedByRisk"
+          v-for="node in filteredNodes"
           :key="node.slug"
           :class="['node-card', { selected: store.selectedBottleneck?.slug === node.slug }]"
-          @click="store.selectBottleneck(node.slug)"
+          @click="handleNodeClick(node.slug)"
         >
           <div class="node-header">
             <span class="node-name">{{ node.name }}</span>
             <span :class="['risk-badge', `risk-${node.risk_level}`]">
-              {{ node.risk_level }}
+              {{ t(`bottleneck.risk.${node.risk_level}`) }}
             </span>
           </div>
           <div class="node-meta">
-            <span class="node-type">{{ node.node_type }}</span>
+            <span :class="['type-badge', `type-${node.node_type}`]">
+              <i :class="['pi', typeIcon(node.node_type)]" />
+              {{ t(`bottleneck.type.${node.node_type}`, node.node_type) }}
+            </span>
             <span v-if="node.vessel_count" class="vessel-count">
-              {{ node.vessel_count }} vessels
+              <i class="pi pi-send" />
+              {{ node.vessel_count }}
             </span>
           </div>
           <div class="risk-bar-container">
@@ -31,93 +77,185 @@
               :class="`risk-${node.risk_level}`"
               :style="{ width: riskWidth(node.risk_level) }"
             />
+            <span class="risk-bar-label">{{ riskNumeric(node.risk_level) }}/10</span>
           </div>
           <div class="commodity-tags">
             <span
-              v-for="c in node.commodities"
+              v-for="c in node.commodities?.slice(0, 4)"
               :key="c"
               :class="['tag', `tag-${getCommodityGroup(c)}`]"
             >
               {{ c.replace(/_/g, ' ') }}
             </span>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div class="detail-panel" v-if="store.selectedBottleneck">
-      <button class="close-detail" @click="store.clearSelection()">&times;</button>
-      <h2>{{ store.selectedBottleneck.name }}</h2>
-      <div class="detail-type">{{ store.selectedBottleneck.node_type }}</div>
-
-      <div class="stats-grid">
-        <div class="stat-card">
-          <div class="stat-label">Vessels</div>
-          <div class="stat-value">{{ store.selectedBottleneck.vessel_count ?? '—' }}</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">Avg Speed</div>
-          <div class="stat-value">
-            {{ store.selectedBottleneck.avg_speed?.toFixed(1) ?? '—' }} kn
-          </div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">Congestion</div>
-          <div class="stat-value">
-            {{ store.selectedBottleneck.congestion_index?.toFixed(2) ?? '—' }}
-          </div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">Risk</div>
-          <div
-            :class="['stat-value', `text-${store.selectedBottleneck.risk_level}`]"
-          >
-            {{ store.selectedBottleneck.risk_level }}
+            <span v-if="(node.commodities?.length || 0) > 4" class="tag tag-more">
+              +{{ node.commodities!.length - 4 }}
+            </span>
           </div>
         </div>
       </div>
 
-      <div v-if="store.selectedBottleneck.throughput_description" class="throughput">
-        {{ store.selectedBottleneck.throughput_description }}
+      <!-- Auto-refresh indicator -->
+      <div class="refresh-indicator" v-if="!listLoading && !listError">
+        <span class="refresh-text">
+          {{ t('common.lastUpdated') }}: {{ lastRefreshLabel }}
+        </span>
       </div>
+    </aside>
 
-      <div class="history-section" v-if="store.selectedBottleneck.status_history.length">
-        <h3>7-Day History</h3>
-        <div class="history-chart">
-          <svg viewBox="0 0 600 150" preserveAspectRatio="none" class="history-svg">
-            <polyline
-              :points="historyChartPoints"
-              fill="none"
-              stroke="#f59e0b"
-              stroke-width="2"
-            />
-          </svg>
-          <div class="history-labels">
-            <span>{{ historyMin }} vessels</span>
-            <span>{{ historyMax }} vessels</span>
-          </div>
-        </div>
-      </div>
-
-      <button class="sim-btn" @click="goToSimulation">
-        Run Simulation
+    <!-- Right Panel: Detail -->
+    <main class="detail-panel" :class="{ 'mobile-visible': mobileShowDetail }">
+      <!-- Mobile back button -->
+      <button v-if="mobileShowDetail" class="mobile-back" @click="closeDetail">
+        <i class="pi pi-arrow-left" />
+        {{ t('bottleneck.backToList') }}
       </button>
-    </div>
 
-    <div class="detail-panel empty-detail" v-else>
-      <p>Select a bottleneck node to view details</p>
-    </div>
+      <!-- Loading detail skeleton -->
+      <div v-if="store.loading" class="detail-loading">
+        <div class="skeleton-line skeleton-detail-title" />
+        <div class="skeleton-line skeleton-detail-sub" />
+        <div class="stats-grid">
+          <div v-for="i in 4" :key="i" class="stat-card">
+            <div class="skeleton-line skeleton-stat-label" />
+            <div class="skeleton-line skeleton-stat-value" />
+          </div>
+        </div>
+        <div class="skeleton-line skeleton-chart" />
+      </div>
+
+      <!-- Detail content -->
+      <div v-else-if="store.selectedBottleneck" class="detail-content fade-in">
+        <button class="close-detail desktop-only" @click="closeDetail">
+          <i class="pi pi-times" />
+        </button>
+
+        <!-- Header -->
+        <div class="detail-header">
+          <div>
+            <h2>{{ store.selectedBottleneck.name }}</h2>
+            <div class="detail-meta">
+              <span :class="['type-badge', `type-${store.selectedBottleneck.node_type}`]">
+                <i :class="['pi', typeIcon(store.selectedBottleneck.node_type)]" />
+                {{ t(`bottleneck.type.${store.selectedBottleneck.node_type}`, store.selectedBottleneck.node_type) }}
+              </span>
+              <span :class="['risk-badge', `risk-${store.selectedBottleneck.risk_level}`]">
+                {{ t(`bottleneck.risk.${store.selectedBottleneck.risk_level}`) }}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Description -->
+        <p v-if="store.selectedBottleneck.throughput_description" class="detail-description">
+          {{ store.selectedBottleneck.throughput_description }}
+        </p>
+
+        <!-- Stats Grid -->
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-icon"><i class="pi pi-send" /></div>
+            <div class="stat-label">{{ t('bottleneck.stats.vessels') }}</div>
+            <div class="stat-value">{{ store.selectedBottleneck.vessel_count ?? '—' }}</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon"><i class="pi pi-gauge" /></div>
+            <div class="stat-label">{{ t('bottleneck.stats.avgSpeed') }}</div>
+            <div class="stat-value">
+              {{ store.selectedBottleneck.avg_speed?.toFixed(1) ?? '—' }}
+              <span class="stat-unit">kn</span>
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon"><i class="pi pi-chart-bar" /></div>
+            <div class="stat-label">{{ t('bottleneck.stats.congestion') }}</div>
+            <div class="stat-value">
+              {{ store.selectedBottleneck.congestion_index?.toFixed(2) ?? '—' }}
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon risk-icon" :class="`risk-${store.selectedBottleneck.risk_level}`"><i class="pi pi-shield" /></div>
+            <div class="stat-label">{{ t('bottleneck.stats.riskLevel') }}</div>
+            <div :class="['stat-value', `text-${store.selectedBottleneck.risk_level}`]">
+              {{ t(`bottleneck.risk.${store.selectedBottleneck.risk_level}`) }}
+            </div>
+          </div>
+        </div>
+
+        <!-- ECharts Congestion History -->
+        <div class="chart-section" v-if="store.selectedBottleneck.status_history?.length">
+          <h3>{{ t('bottleneck.history') }}</h3>
+          <div ref="chartContainer" class="chart-container" />
+        </div>
+
+        <!-- Commodities -->
+        <div class="commodities-section" v-if="store.selectedBottleneck.commodities?.length">
+          <h3>{{ t('bottleneck.commoditiesAffected') }}</h3>
+          <div class="commodity-chips">
+            <span
+              v-for="c in store.selectedBottleneck.commodities"
+              :key="c"
+              :class="['commodity-chip', `chip-${getCommodityGroup(c)}`]"
+            >
+              {{ c.replace(/_/g, ' ') }}
+            </span>
+          </div>
+        </div>
+
+        <!-- Simulation Button -->
+        <button class="sim-btn" @click="goToSimulation">
+          <i class="pi pi-play" />
+          {{ t('bottleneck.runSimulation') }}
+        </button>
+      </div>
+
+      <!-- Empty state -->
+      <div v-else class="empty-detail">
+        <div class="empty-illustration">
+          <i class="pi pi-map" />
+        </div>
+        <h3>{{ t('bottleneck.selectPrompt') }}</h3>
+        <p>{{ t('bottleneck.selectDescription') }}</p>
+      </div>
+    </main>
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted, computed } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { useBottleneckStore } from '../stores/useBottleneckStore'
+import { useChart } from '../composables/useChart'
 
+const { t } = useI18n()
 const store = useBottleneckStore()
 const router = useRouter()
 
+// --- State ---
+const searchQuery = ref('')
+const listLoading = ref(false)
+const listError = ref(false)
+const mobileShowDetail = ref(false)
+const lastRefreshTime = ref<Date | null>(null)
+const lastRefreshLabel = ref('—')
+
+// --- Chart ---
+const chartContainer = ref<HTMLElement | null>(null)
+const { setOption, chart } = useChart(chartContainer)
+
+// --- Computed ---
+const filteredNodes = computed(() => {
+  const q = searchQuery.value.toLowerCase().trim()
+  const nodes = store.sortedByRisk
+  if (!q) return nodes
+  return nodes.filter(n =>
+    n.name.toLowerCase().includes(q) ||
+    n.node_type.toLowerCase().includes(q) ||
+    n.commodities?.some(c => c.toLowerCase().includes(q))
+  )
+})
+
+// --- Helpers ---
 function riskWidth(level: string): string {
   const map: Record<string, string> = {
     critical: '100%', high: '75%', elevated: '50%', normal: '25%',
@@ -125,292 +263,892 @@ function riskWidth(level: string): string {
   return map[level] || '10%'
 }
 
+function riskNumeric(level: string): number {
+  const map: Record<string, number> = {
+    critical: 10, high: 7, elevated: 5, normal: 2,
+  }
+  return map[level] || 1
+}
+
 function getCommodityGroup(c: string): string {
-  if (['crude_oil', 'lng', 'coal'].includes(c)) return 'energy'
-  if (['copper', 'iron_ore', 'aluminium', 'nickel'].includes(c)) return 'metals'
+  if (['crude_oil', 'lng', 'coal', 'natural_gas', 'diesel', 'gasoline'].includes(c)) return 'energy'
+  if (['copper', 'iron_ore', 'aluminium', 'nickel', 'zinc', 'lithium'].includes(c)) return 'metals'
+  if (['wheat', 'corn', 'soybeans', 'rice', 'sugar', 'coffee'].includes(c)) return 'agri'
   return 'other'
 }
 
-const historyMin = computed(() => {
-  const h = store.selectedBottleneck?.status_history || []
-  if (!h.length) return 0
-  return Math.min(...h.map(s => s.vessel_count))
-})
+function typeIcon(type: string): string {
+  const map: Record<string, string> = {
+    port: 'pi-building',
+    strait: 'pi-directions',
+    canal: 'pi-directions',
+    pipeline: 'pi-sitemap',
+  }
+  return map[type] || 'pi-map-marker'
+}
 
-const historyMax = computed(() => {
-  const h = store.selectedBottleneck?.status_history || []
-  if (!h.length) return 0
-  return Math.max(...h.map(s => s.vessel_count))
-})
+function handleNodeClick(slug: string) {
+  store.selectBottleneck(slug)
+  mobileShowDetail.value = true
+}
 
-const historyChartPoints = computed(() => {
-  const h = store.selectedBottleneck?.status_history || []
-  if (!h.length) return ''
-  const range = historyMax.value - historyMin.value || 1
-  return h
-    .map((s, i) => {
-      const x = (i / (h.length - 1)) * 600
-      const y = 150 - ((s.vessel_count - historyMin.value) / range) * 130 - 10
-      return `${x},${y}`
-    })
-    .join(' ')
-})
+function closeDetail() {
+  store.clearSelection()
+  mobileShowDetail.value = false
+}
 
 function goToSimulation() {
   const slug = store.selectedBottleneck?.slug
   if (slug) {
-    router.push({ path: '/simulation', query: { node: slug } })
+    router.push({ path: '/simulations', query: { node: slug } })
   }
 }
 
+// --- Chart rendering ---
+function renderChart() {
+  const history = store.selectedBottleneck?.status_history
+  if (!history?.length || !chart.value) return
+
+  const dates = history.map(s => {
+    const d = new Date(s.timestamp)
+    return `${d.getMonth() + 1}/${d.getDate()}`
+  })
+  const congestionValues = history.map(s => s.congestion_index ?? 0)
+  const vesselValues = history.map(s => s.vessel_count)
+
+  // Compute a "normal" threshold as 40th percentile of congestion
+  const sorted = [...congestionValues].sort((a, b) => a - b)
+  const normalThreshold = sorted[Math.floor(sorted.length * 0.4)] || 0.5
+
+  setOption({
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: { type: 'cross', lineStyle: { color: '#475569' } },
+    },
+    grid: {
+      left: 50,
+      right: 20,
+      top: 16,
+      bottom: 30,
+    },
+    xAxis: {
+      type: 'category',
+      data: dates,
+      boundaryGap: false,
+    },
+    yAxis: [
+      {
+        type: 'value',
+        name: t('bottleneck.stats.congestion'),
+        nameTextStyle: { fontSize: 11 },
+        splitNumber: 4,
+      },
+      {
+        type: 'value',
+        name: t('bottleneck.stats.vessels'),
+        nameTextStyle: { fontSize: 11 },
+        splitNumber: 4,
+      },
+    ],
+    series: [
+      {
+        name: t('bottleneck.stats.congestion'),
+        type: 'line',
+        data: congestionValues,
+        smooth: true,
+        symbol: 'circle',
+        symbolSize: 5,
+        lineStyle: { width: 2.5, color: '#f59e0b' },
+        itemStyle: { color: '#f59e0b' },
+        areaStyle: {
+          color: {
+            type: 'linear',
+            x: 0, y: 0, x2: 0, y2: 1,
+            colorStops: [
+              { offset: 0, color: 'rgba(245, 158, 11, 0.3)' },
+              { offset: 1, color: 'rgba(245, 158, 11, 0.02)' },
+            ],
+          },
+        },
+        markLine: {
+          silent: true,
+          symbol: 'none',
+          lineStyle: { color: '#22c55e', type: 'dashed', width: 1.5 },
+          data: [{ yAxis: normalThreshold, label: { formatter: 'Normal', color: '#22c55e', fontSize: 10 } }],
+        },
+        yAxisIndex: 0,
+      },
+      {
+        name: t('bottleneck.stats.vessels'),
+        type: 'line',
+        data: vesselValues,
+        smooth: true,
+        symbol: 'circle',
+        symbolSize: 4,
+        lineStyle: { width: 1.5, color: '#3b82f6', type: 'dashed' },
+        itemStyle: { color: '#3b82f6' },
+        yAxisIndex: 1,
+      },
+    ],
+  })
+}
+
+// --- Watch for detail changes to update chart ---
+watch(
+  () => store.selectedBottleneck?.slug,
+  async () => {
+    if (store.selectedBottleneck?.status_history?.length) {
+      await nextTick()
+      // Re-init chart if container changed
+      if (chartContainer.value && !chart.value) {
+        // composable handles init on mount, but for dynamic show we need manual init
+        const echarts = await import('echarts/core')
+        chart.value = echarts.init(chartContainer.value, 'supplyshock-dark')
+      }
+      renderChart()
+    }
+  },
+  { flush: 'post' }
+)
+
+watch(
+  () => store.selectedBottleneck?.status_history,
+  () => {
+    if (store.selectedBottleneck?.status_history?.length) {
+      nextTick(() => renderChart())
+    }
+  },
+  { deep: true }
+)
+
+// --- Lifecycle ---
+let refreshInterval: ReturnType<typeof setInterval> | null = null
+let refreshLabelInterval: ReturnType<typeof setInterval> | null = null
+
+async function loadBottlenecks() {
+  listLoading.value = true
+  listError.value = false
+  try {
+    await store.fetchBottlenecks()
+    lastRefreshTime.value = new Date()
+    updateRefreshLabel()
+  } catch {
+    listError.value = true
+  } finally {
+    listLoading.value = false
+  }
+}
+
+function updateRefreshLabel() {
+  if (!lastRefreshTime.value) {
+    lastRefreshLabel.value = '—'
+    return
+  }
+  const diff = Math.floor((Date.now() - lastRefreshTime.value.getTime()) / 1000)
+  if (diff < 60) lastRefreshLabel.value = t('bottleneck.justNow')
+  else if (diff < 3600) lastRefreshLabel.value = `${Math.floor(diff / 60)} min`
+  else lastRefreshLabel.value = lastRefreshTime.value.toLocaleTimeString()
+}
+
 onMounted(() => {
-  store.fetchBottlenecks()
+  loadBottlenecks()
+  // Auto-refresh every 5 minutes
+  refreshInterval = setInterval(loadBottlenecks, 5 * 60 * 1000)
+  refreshLabelInterval = setInterval(updateRefreshLabel, 30_000)
+})
+
+onUnmounted(() => {
+  if (refreshInterval) clearInterval(refreshInterval)
+  if (refreshLabelInterval) clearInterval(refreshLabelInterval)
 })
 </script>
 
 <style scoped>
+/* ========== Layout ========== */
 .bottleneck-monitor {
-  display: grid;
-  grid-template-columns: 400px 1fr;
-  height: 100vh;
-  color: #f1f5f9;
+  display: flex;
+  height: calc(100vh - 64px);
+  color: var(--ss-text-primary);
+  overflow: hidden;
 }
 
+/* ========== Left Panel ========== */
 .list-panel {
-  background: #0f172a;
-  border-right: 1px solid #1e293b;
-  overflow-y: auto;
+  width: 380px;
+  min-width: 320px;
+  max-width: 420px;
+  background: var(--ss-bg-base);
+  border-right: 1px solid var(--ss-border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .panel-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 1.5rem;
-  border-bottom: 1px solid #1e293b;
+  padding: 1.25rem 1rem 0.75rem;
+  border-bottom: 1px solid var(--ss-border);
   position: sticky;
   top: 0;
-  background: #0f172a;
+  background: var(--ss-bg-base);
   z-index: 10;
 }
 
+.header-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+
 .panel-header h1 {
-  font-size: 1.25rem;
+  font-size: 1.2rem;
+  font-weight: 700;
   margin: 0;
 }
 
 .node-count {
-  color: #64748b;
+  color: var(--ss-text-muted);
+  font-size: 0.8rem;
+}
+
+/* Search */
+.search-wrapper {
+  position: relative;
+}
+
+.search-icon {
+  position: absolute;
+  left: 0.75rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--ss-text-muted);
   font-size: 0.85rem;
 }
 
+.search-input {
+  width: 100%;
+  background: var(--ss-bg-surface);
+  border: 1px solid var(--ss-border-light);
+  border-radius: var(--ss-radius);
+  padding: 0.55rem 2.25rem 0.55rem 2.25rem;
+  color: var(--ss-text-primary);
+  font-size: 0.85rem;
+  outline: none;
+  transition: border-color var(--ss-transition-fast);
+}
+
+.search-input:focus {
+  border-color: var(--ss-accent);
+}
+
+.search-input::placeholder {
+  color: var(--ss-text-muted);
+}
+
+.search-clear {
+  position: absolute;
+  right: 0.5rem;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: var(--ss-text-muted);
+  cursor: pointer;
+  padding: 0.25rem;
+  font-size: 0.8rem;
+}
+
+/* List */
 .bottleneck-list {
+  flex: 1;
+  overflow-y: auto;
   padding: 0.75rem;
 }
 
+.empty-list {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 3rem 1rem;
+  color: var(--ss-text-muted);
+  gap: 0.5rem;
+}
+
+.empty-list i {
+  font-size: 2rem;
+  opacity: 0.5;
+}
+
+/* Node Card */
 .node-card {
-  background: #1e293b;
-  border: 1px solid #334155;
-  border-radius: 10px;
-  padding: 1rem;
+  background: var(--ss-bg-surface);
+  border: 1px solid var(--ss-border-light);
+  border-radius: var(--ss-radius-lg);
+  padding: 0.875rem 1rem;
   margin-bottom: 0.5rem;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all var(--ss-transition-fast);
 }
 
 .node-card:hover {
-  border-color: #475569;
+  border-color: var(--ss-text-muted);
+  transform: translateX(2px);
 }
 
 .node-card.selected {
-  border-color: #f59e0b;
-  box-shadow: 0 0 0 1px #f59e0b;
+  border-color: var(--ss-accent);
+  box-shadow: inset 3px 0 0 var(--ss-accent);
+  background: rgba(20, 184, 166, 0.05);
 }
 
 .node-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.4rem;
 }
 
 .node-name {
   font-weight: 600;
-  font-size: 0.95rem;
+  font-size: 0.9rem;
 }
 
+/* Risk badge */
 .risk-badge {
-  font-size: 0.7rem;
+  font-size: 0.65rem;
   font-weight: 700;
   text-transform: uppercase;
   padding: 2px 8px;
-  border-radius: 4px;
+  border-radius: 9999px;
+  letter-spacing: 0.03em;
 }
 
-.risk-badge.risk-critical { background: #dc2626; color: #fff; }
-.risk-badge.risk-high { background: #ea580c; color: #fff; }
-.risk-badge.risk-elevated { background: #ca8a04; color: #fff; }
-.risk-badge.risk-normal { background: #334155; color: #94a3b8; }
+.risk-badge.risk-critical { background: rgba(239, 68, 68, 0.15); color: var(--ss-danger); }
+.risk-badge.risk-high { background: rgba(249, 115, 22, 0.15); color: #f97316; }
+.risk-badge.risk-elevated { background: rgba(234, 179, 8, 0.15); color: #eab308; }
+.risk-badge.risk-normal { background: rgba(34, 197, 94, 0.15); color: var(--ss-success); }
+
+/* Type badge */
+.type-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.75rem;
+  color: var(--ss-text-secondary);
+  text-transform: capitalize;
+}
+
+.type-badge i {
+  font-size: 0.7rem;
+}
+
+.type-badge.type-port { color: var(--ss-info); }
+.type-badge.type-strait { color: var(--ss-warning); }
+.type-badge.type-canal { color: var(--ss-accent); }
+.type-badge.type-pipeline { color: #a78bfa; }
 
 .node-meta {
   display: flex;
-  gap: 1rem;
-  color: #64748b;
-  font-size: 0.8rem;
+  align-items: center;
+  gap: 0.75rem;
   margin-bottom: 0.5rem;
 }
 
+.vessel-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  color: var(--ss-text-muted);
+  font-size: 0.75rem;
+}
+
+.vessel-count i {
+  font-size: 0.65rem;
+}
+
+/* Risk bar */
 .risk-bar-container {
   height: 4px;
-  background: #334155;
+  background: var(--ss-bg-elevated);
   border-radius: 2px;
-  margin-bottom: 0.75rem;
+  margin-bottom: 0.6rem;
+  position: relative;
 }
 
 .risk-bar {
   height: 100%;
   border-radius: 2px;
-  transition: width 0.3s;
+  transition: width 0.4s ease;
 }
 
-.risk-bar.risk-critical { background: #dc2626; }
-.risk-bar.risk-high { background: #ea580c; }
-.risk-bar.risk-elevated { background: #ca8a04; }
-.risk-bar.risk-normal { background: #475569; }
+.risk-bar.risk-critical { background: linear-gradient(90deg, #ef4444, #dc2626); }
+.risk-bar.risk-high { background: linear-gradient(90deg, #f97316, #ea580c); }
+.risk-bar.risk-elevated { background: linear-gradient(90deg, #eab308, #ca8a04); }
+.risk-bar.risk-normal { background: linear-gradient(90deg, #22c55e, #16a34a); }
 
+.risk-bar-label {
+  position: absolute;
+  right: 0;
+  top: -14px;
+  font-size: 0.6rem;
+  color: var(--ss-text-muted);
+}
+
+/* Commodity tags */
 .commodity-tags {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.35rem;
+  gap: 0.3rem;
 }
 
 .tag {
-  font-size: 0.7rem;
+  font-size: 0.65rem;
   padding: 2px 6px;
   border-radius: 4px;
-  background: #334155;
-  color: #94a3b8;
+  text-transform: capitalize;
 }
 
-.tag-energy { background: #7f1d1d; color: #fca5a5; }
-.tag-metals { background: #1e3a5f; color: #93c5fd; }
+.tag-energy { background: rgba(239, 68, 68, 0.12); color: #fca5a5; }
+.tag-metals { background: rgba(59, 130, 246, 0.12); color: #93c5fd; }
+.tag-agri { background: rgba(34, 197, 94, 0.12); color: #86efac; }
+.tag-other { background: var(--ss-bg-elevated); color: var(--ss-text-secondary); }
+.tag-more { background: transparent; color: var(--ss-text-muted); font-style: italic; }
 
+/* Refresh indicator */
+.refresh-indicator {
+  padding: 0.5rem 1rem;
+  border-top: 1px solid var(--ss-border);
+  text-align: center;
+}
+
+.refresh-text {
+  font-size: 0.7rem;
+  color: var(--ss-text-muted);
+}
+
+/* ========== Right Panel: Detail ========== */
 .detail-panel {
-  padding: 2rem;
+  flex: 1;
   overflow-y: auto;
+  padding: 1.5rem 2rem;
   position: relative;
-}
-
-.empty-detail {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #475569;
+  min-width: 0;
 }
 
 .close-detail {
   position: absolute;
   top: 1rem;
   right: 1.5rem;
-  background: none;
-  border: none;
-  color: #64748b;
-  font-size: 1.5rem;
+  background: var(--ss-bg-surface);
+  border: 1px solid var(--ss-border-light);
+  border-radius: var(--ss-radius);
+  color: var(--ss-text-muted);
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   cursor: pointer;
+  transition: all var(--ss-transition-fast);
 }
 
-.detail-panel h2 {
+.close-detail:hover {
+  color: var(--ss-text-primary);
+  border-color: var(--ss-text-muted);
+}
+
+/* Mobile back button */
+.mobile-back {
+  display: none;
+}
+
+/* Detail header */
+.detail-header {
+  margin-bottom: 1.25rem;
+}
+
+.detail-header h2 {
   font-size: 1.5rem;
-  margin: 0 0 0.25rem;
+  font-weight: 700;
+  margin: 0 0 0.5rem;
 }
 
-.detail-type {
-  color: #64748b;
-  font-size: 0.9rem;
-  text-transform: capitalize;
-  margin-bottom: 1.5rem;
+.detail-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
 }
 
+/* Description */
+.detail-description {
+  background: var(--ss-bg-surface);
+  border: 1px solid var(--ss-border-light);
+  border-radius: var(--ss-radius-lg);
+  padding: 1rem 1.25rem;
+  color: var(--ss-text-secondary);
+  font-size: 0.875rem;
+  line-height: 1.65;
+  margin-bottom: 1.25rem;
+}
+
+/* Stats Grid */
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 1rem;
+  gap: 0.75rem;
   margin-bottom: 1.5rem;
 }
 
 .stat-card {
-  background: #1e293b;
-  border-radius: 10px;
+  background: var(--ss-bg-surface);
+  border: 1px solid var(--ss-border-light);
+  border-radius: var(--ss-radius-lg);
   padding: 1rem;
   text-align: center;
+  transition: border-color var(--ss-transition-fast);
 }
 
+.stat-card:hover {
+  border-color: var(--ss-accent-dim);
+}
+
+.stat-icon {
+  margin-bottom: 0.4rem;
+  color: var(--ss-text-muted);
+  font-size: 1.1rem;
+}
+
+.stat-icon.risk-icon.risk-critical { color: var(--ss-danger); }
+.stat-icon.risk-icon.risk-high { color: #f97316; }
+.stat-icon.risk-icon.risk-elevated { color: #eab308; }
+.stat-icon.risk-icon.risk-normal { color: var(--ss-success); }
+
 .stat-label {
-  color: #64748b;
-  font-size: 0.75rem;
+  color: var(--ss-text-muted);
+  font-size: 0.7rem;
   text-transform: uppercase;
-  margin-bottom: 0.25rem;
+  letter-spacing: 0.04em;
+  margin-bottom: 0.3rem;
 }
 
 .stat-value {
-  font-size: 1.25rem;
+  font-size: 1.2rem;
   font-weight: 700;
 }
 
-.text-critical { color: #ef4444; }
+.stat-unit {
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--ss-text-muted);
+}
+
+.text-critical { color: var(--ss-danger); }
 .text-high { color: #f97316; }
 .text-elevated { color: #eab308; }
-.text-normal { color: #10b981; }
+.text-normal { color: var(--ss-success); }
 
-.throughput {
-  background: #1e293b;
-  border-radius: 10px;
-  padding: 1rem;
-  color: #94a3b8;
-  font-size: 0.9rem;
-  line-height: 1.6;
+/* Chart Section */
+.chart-section {
   margin-bottom: 1.5rem;
 }
 
-.history-section h3 {
-  font-size: 1rem;
+.chart-section h3 {
+  font-size: 0.95rem;
+  font-weight: 600;
   margin: 0 0 0.75rem;
 }
 
-.history-chart {
-  background: #1e293b;
-  border-radius: 10px;
-  padding: 1rem;
+.chart-container {
+  background: var(--ss-bg-surface);
+  border: 1px solid var(--ss-border-light);
+  border-radius: var(--ss-radius-lg);
+  height: 260px;
+  width: 100%;
+}
+
+/* Commodities Section */
+.commodities-section {
   margin-bottom: 1.5rem;
 }
 
-.history-svg {
-  width: 100%;
-  height: 150px;
+.commodities-section h3 {
+  font-size: 0.95rem;
+  font-weight: 600;
+  margin: 0 0 0.75rem;
 }
 
-.history-labels {
+.commodity-chips {
   display: flex;
-  justify-content: space-between;
-  color: #64748b;
-  font-size: 0.75rem;
-  margin-top: 0.5rem;
+  flex-wrap: wrap;
+  gap: 0.4rem;
 }
 
+.commodity-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.35rem 0.75rem;
+  border-radius: 9999px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  text-transform: capitalize;
+}
+
+.chip-energy { background: rgba(239, 68, 68, 0.12); color: #fca5a5; }
+.chip-metals { background: rgba(59, 130, 246, 0.12); color: #93c5fd; }
+.chip-agri { background: rgba(34, 197, 94, 0.12); color: #86efac; }
+.chip-other { background: var(--ss-bg-elevated); color: var(--ss-text-secondary); }
+
+/* Simulation Button */
 .sim-btn {
-  background: #3b82f6;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: var(--ss-accent);
   color: #fff;
   border: none;
-  padding: 0.75rem 2rem;
-  border-radius: 8px;
-  font-size: 1rem;
+  padding: 0.75rem 1.75rem;
+  border-radius: var(--ss-radius);
+  font-size: 0.9rem;
   font-weight: 600;
   cursor: pointer;
-  transition: background 0.2s;
-  width: 100%;
+  transition: all var(--ss-transition-fast);
+  width: auto;
 }
 
 .sim-btn:hover {
-  background: #2563eb;
+  background: var(--ss-accent-light);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(20, 184, 166, 0.3);
+}
+
+/* Empty detail */
+.empty-detail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--ss-text-muted);
+  text-align: center;
+  gap: 0.75rem;
+}
+
+.empty-illustration {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  background: var(--ss-bg-surface);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 0.5rem;
+}
+
+.empty-illustration i {
+  font-size: 2rem;
+  color: var(--ss-text-muted);
+  opacity: 0.5;
+}
+
+.empty-detail h3 {
+  font-size: 1.1rem;
+  color: var(--ss-text-secondary);
+  margin: 0;
+}
+
+.empty-detail p {
+  font-size: 0.85rem;
+  max-width: 300px;
+  line-height: 1.5;
+}
+
+/* ========== Skeleton ========== */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.skeleton-line {
+  background: linear-gradient(
+    90deg,
+    var(--ss-bg-elevated) 25%,
+    rgba(100, 116, 139, 0.15) 50%,
+    var(--ss-bg-elevated) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite ease-in-out;
+  border-radius: 4px;
+}
+
+.skeleton-card {
+  cursor: default !important;
+}
+.skeleton-card:hover {
+  transform: none !important;
+  border-color: var(--ss-border-light) !important;
+}
+
+.skeleton-title { height: 16px; width: 70%; margin-bottom: 0.6rem; }
+.skeleton-meta { height: 12px; width: 45%; margin-bottom: 0.5rem; }
+.skeleton-bar { height: 4px; width: 100%; margin-bottom: 0.6rem; }
+.skeleton-tags { display: flex; gap: 0.3rem; }
+.skeleton-tag { height: 18px; width: 50px; border-radius: 4px; }
+
+.skeleton-detail-title { height: 24px; width: 50%; margin-bottom: 0.75rem; }
+.skeleton-detail-sub { height: 14px; width: 30%; margin-bottom: 1.5rem; }
+.skeleton-stat-label { height: 10px; width: 60%; margin: 0 auto 0.4rem; }
+.skeleton-stat-value { height: 20px; width: 40%; margin: 0 auto; }
+.skeleton-chart { height: 200px; width: 100%; margin-top: 1rem; border-radius: var(--ss-radius-lg); }
+
+/* Detail loading */
+.detail-loading {
+  padding: 1rem 0;
+}
+
+/* ========== Error ========== */
+.list-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem 1rem;
+  gap: 0.75rem;
+  color: var(--ss-text-muted);
+}
+
+.error-icon {
+  font-size: 2.5rem;
+  color: var(--ss-warning);
+}
+
+.retry-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: var(--ss-bg-surface);
+  border: 1px solid var(--ss-border-light);
+  border-radius: var(--ss-radius);
+  color: var(--ss-text-primary);
+  padding: 0.5rem 1.25rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all var(--ss-transition-fast);
+}
+
+.retry-btn:hover {
+  border-color: var(--ss-accent);
+  color: var(--ss-accent);
+}
+
+/* ========== Responsive: Tablet ========== */
+@media (max-width: 1024px) {
+  .bottleneck-monitor {
+    flex-direction: column;
+    height: auto;
+    min-height: calc(100vh - 64px);
+  }
+
+  .list-panel {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    border-right: none;
+    border-bottom: 1px solid var(--ss-border);
+    max-height: 45vh;
+  }
+
+  .detail-panel {
+    flex: 1;
+    min-height: 55vh;
+    padding: 1.25rem;
+  }
+
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .desktop-only {
+    display: flex;
+  }
+}
+
+/* ========== Responsive: Mobile ========== */
+@media (max-width: 640px) {
+  .bottleneck-monitor {
+    flex-direction: column;
+    position: relative;
+  }
+
+  .list-panel {
+    max-height: none;
+    height: 100%;
+    flex: 1;
+    border-bottom: none;
+  }
+
+  .list-panel.mobile-hidden {
+    display: none;
+  }
+
+  .detail-panel {
+    display: none;
+    padding: 1rem;
+  }
+
+  .detail-panel.mobile-visible {
+    display: flex;
+    flex-direction: column;
+    position: fixed;
+    inset: 0;
+    top: 64px;
+    z-index: 100;
+    background: var(--ss-bg-base);
+    overflow-y: auto;
+  }
+
+  .mobile-back {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    background: none;
+    border: none;
+    color: var(--ss-accent);
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 0.5rem 0;
+    margin-bottom: 0.75rem;
+  }
+
+  .desktop-only {
+    display: none !important;
+  }
+
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .detail-header h2 {
+    font-size: 1.25rem;
+  }
+
+  .chart-container {
+    height: 200px;
+  }
+
+  .sim-btn {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+/* ========== Animation ========== */
+.fade-in {
+  animation: fadeIn var(--ss-transition) ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 </style>
