@@ -134,6 +134,147 @@
     "errorBottlenecks": "Failed to load chokepoint data",
     "errorAlerts": "Failed to load alerts"
   },
+  "simulations": {
+    "title": "Simulations",
+    "newSimulation": "New Simulation",
+    "pastSimulations": "Past Simulations",
+    "titleLabel": "Title",
+    "titlePlaceholder": "e.g. Suez Canal blockade scenario",
+    "titleRequired": "Title is required",
+    "nodeLabel": "Node",
+    "selectNode": "Select a bottleneck node...",
+    "nodeRequired": "Node selection is required",
+    "eventTypeLabel": "Event Type",
+    "descriptionLabel": "Description",
+    "descriptionPlaceholder": "Describe the disruption scenario...",
+    "advancedParams": "Advanced Parameters",
+    "durationWeeks": "Duration (weeks)",
+    "intensity": "Intensity",
+    "agentsCount": "Agents Count",
+    "horizonDays": "Horizon (days)",
+    "runSimulation": "Run Simulation",
+    "submitted": "Simulation queued successfully!",
+    "submittedDemo": "Simulation submitted (demo mode)",
+    "deleted": "Simulation deleted",
+    "deleteFailed": "Failed to delete simulation",
+    "colTitle": "Title",
+    "colNode": "Node",
+    "colEvent": "Event",
+    "colStatus": "Status",
+    "colProgress": "Progress",
+    "colCreated": "Created",
+    "colActions": "Actions",
+    "viewResults": "View Results",
+    "resultsSummary": "Results Summary",
+    "impactScore": "Impact Score",
+    "recoveryDays": "Recovery Time",
+    "affectedCommodities": "Affected Commodities",
+    "priceChange": "Price Change",
+    "unknownError": "An unknown error occurred",
+    "emptyTitle": "No simulations yet",
+    "emptyDesc": "Create your first disruption scenario above.",
+    "upgradeBannerTitle": "Free plan — 1 simulation per month",
+    "upgradeBannerDesc": "Upgrade to Pro for unlimited simulations, higher agent counts, and priority processing.",
+    "upgradePlan": "Upgrade Plan",
+    "status": {
+      "queued": "Queued",
+      "running": "Running",
+      "completed": "Completed",
+      "failed": "Failed",
+      "timeout": "Timeout"
+    }
+  },
+  "settings": {
+    "title": "Settings",
+    "subtitle": "Manage your account, billing, and preferences",
+    "tabs": {
+      "profile": "Profile",
+      "billing": "Billing",
+      "notifications": "Notifications",
+      "apiKeys": "API Keys",
+      "preferences": "Preferences"
+    },
+    "profile": {
+      "anonymous": "Anonymous User",
+      "memberSince": "Member since",
+      "manageAccount": "Manage Account"
+    },
+    "billing": {
+      "currentPlan": "Current Plan",
+      "manageBilling": "Manage Billing",
+      "upgrade": "Upgrade",
+      "currentPlanLabel": "Current Plan",
+      "free": "Free",
+      "month": "mo",
+      "popular": "Most Popular",
+      "plans": {
+        "free": {
+          "name": "Free",
+          "f1": "100 API calls per day",
+          "f2": "5 alert subscriptions",
+          "f3": "1 simulation per month"
+        },
+        "pro": {
+          "name": "Pro",
+          "f1": "10,000 API calls per day",
+          "f2": "Unlimited alert subscriptions",
+          "f3": "50 simulations per month",
+          "f4": "Priority email support"
+        },
+        "business": {
+          "name": "Business",
+          "f1": "100,000 API calls per day",
+          "f2": "Programmatic API key access",
+          "f3": "Priority support with SLA",
+          "f4": "Custom webhook integrations"
+        }
+      }
+    },
+    "notifications": {
+      "activeSubscriptions": "Active Subscriptions",
+      "noSubscriptions": "You have no alert subscriptions yet. Create one below to start receiving notifications.",
+      "addNew": "Add New Subscription",
+      "commodityLabel": "Commodity",
+      "alertTypeLabel": "Alert Type",
+      "minSeverityLabel": "Min Severity",
+      "anyCommodity": "Any commodity",
+      "anyType": "Any type",
+      "emailNotify": "Email",
+      "webhookNotify": "Webhook",
+      "webhookUrl": "Webhook URL",
+      "email": "Email",
+      "webhook": "Webhook",
+      "addSubscription": "Add Subscription",
+      "severity": {
+        "info": "Info",
+        "warning": "Warning",
+        "critical": "Critical"
+      }
+    },
+    "apiKeys": {
+      "title": "API Access",
+      "description": "Programmatic access to SupplyShock data for your applications and workflows.",
+      "proRequired": "API keys are available on Pro and Business plans",
+      "exampleTitle": "Example Request",
+      "features": {
+        "f1": "RESTful API with JSON responses",
+        "f2": "Real-time commodity price data",
+        "f3": "Alert and bottleneck endpoints",
+        "f4": "Webhook event subscriptions"
+      }
+    },
+    "preferences": {
+      "title": "Preferences",
+      "language": "Language",
+      "languageDesc": "Choose your preferred interface language",
+      "theme": "Theme",
+      "themeDesc": "Select the application color scheme",
+      "dark": "Dark",
+      "light": "Light",
+      "refreshInterval": "Data Refresh Interval",
+      "refreshDesc": "How often live data refreshes automatically"
+    }
+  },
   "bottleneck": {
     "title": "Bottleneck Monitor",
     "nodes": "nodes",
@@ -162,6 +303,49 @@
       "avgSpeed": "Avg Speed",
       "congestion": "Congestion",
       "riskLevel": "Risk Level"
+    }
+  },
+  "reports": {
+    "title": "Reports",
+    "generate": "Generate Report",
+    "generateTitle": "Generate Report",
+    "generateFirst": "Generate your first report",
+    "emptyTitle": "No reports yet",
+    "emptyDesc": "Generate your first supply chain intelligence report. Get detailed market overviews, risk analyses, and commodity insights in PDF format.",
+    "pages": "{n} pages",
+    "linkedSimulation": "Linked simulation",
+    "download": "Download",
+    "share": "Share",
+    "shareCopied": "Share link copied to clipboard",
+    "shareError": "Failed to generate share link",
+    "deleteTitle": "Delete Report",
+    "deleteConfirm": "Are you sure you want to delete \"{title}\"? This action cannot be undone.",
+    "deleteSuccess": "Report deleted",
+    "deleteError": "Failed to delete report",
+    "generateSuccess": "Report generation started",
+    "generateError": "Failed to generate report",
+    "fetchError": "Failed to load reports",
+    "planLimit": "You have reached the report limit on the free plan.",
+    "upgradePlan": "Upgrade plan",
+    "status": {
+      "generating": "Generating",
+      "ready": "Ready",
+      "failed": "Failed"
+    },
+    "types": {
+      "marketOverview": "Market Overview",
+      "supplyChainRisk": "Supply Chain Risk",
+      "commodityAnalysis": "Commodity Analysis",
+      "custom": "Custom"
+    },
+    "form": {
+      "title": "Report Title",
+      "titlePlaceholder": "e.g. Q1 2026 Crude Oil Market Overview",
+      "simulation": "Linked Simulation",
+      "noSimulation": "None (standalone report)",
+      "type": "Report Type",
+      "dateFrom": "Date From",
+      "dateTo": "Date To"
     }
   }
 }

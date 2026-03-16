@@ -134,6 +134,147 @@
     "errorBottlenecks": "Nie udało się załadować danych wąskich gardeł",
     "errorAlerts": "Nie udało się załadować alertów"
   },
+  "simulations": {
+    "title": "Symulacje",
+    "newSimulation": "Nowa symulacja",
+    "pastSimulations": "Historia symulacji",
+    "titleLabel": "Tytuł",
+    "titlePlaceholder": "np. Scenariusz blokady Kanału Sueskiego",
+    "titleRequired": "Tytuł jest wymagany",
+    "nodeLabel": "Węzeł",
+    "selectNode": "Wybierz wąskie gardło...",
+    "nodeRequired": "Wybór węzła jest wymagany",
+    "eventTypeLabel": "Typ zdarzenia",
+    "descriptionLabel": "Opis",
+    "descriptionPlaceholder": "Opisz scenariusz zakłócenia...",
+    "advancedParams": "Parametry zaawansowane",
+    "durationWeeks": "Czas trwania (tygodnie)",
+    "intensity": "Intensywność",
+    "agentsCount": "Liczba agentów",
+    "horizonDays": "Horyzont (dni)",
+    "runSimulation": "Uruchom symulację",
+    "submitted": "Symulacja dodana do kolejki!",
+    "submittedDemo": "Symulacja wysłana (tryb demo)",
+    "deleted": "Symulacja usunięta",
+    "deleteFailed": "Nie udało się usunąć symulacji",
+    "colTitle": "Tytuł",
+    "colNode": "Węzeł",
+    "colEvent": "Zdarzenie",
+    "colStatus": "Status",
+    "colProgress": "Postęp",
+    "colCreated": "Utworzono",
+    "colActions": "Akcje",
+    "viewResults": "Zobacz wyniki",
+    "resultsSummary": "Podsumowanie wyników",
+    "impactScore": "Ocena wpływu",
+    "recoveryDays": "Czas odbudowy",
+    "affectedCommodities": "Dotknięte surowce",
+    "priceChange": "Zmiana ceny",
+    "unknownError": "Wystąpił nieznany błąd",
+    "emptyTitle": "Brak symulacji",
+    "emptyDesc": "Utwórz swój pierwszy scenariusz zakłócenia powyżej.",
+    "upgradeBannerTitle": "Plan darmowy — 1 symulacja miesięcznie",
+    "upgradeBannerDesc": "Przejdź na Pro, aby uzyskać nieograniczone symulacje, większą liczbę agentów i priorytetowe przetwarzanie.",
+    "upgradePlan": "Zmień plan",
+    "status": {
+      "queued": "W kolejce",
+      "running": "W trakcie",
+      "completed": "Zakończona",
+      "failed": "Błąd",
+      "timeout": "Przekroczony czas"
+    }
+  },
+  "settings": {
+    "title": "Ustawienia",
+    "subtitle": "Zarządzaj kontem, płatnościami i preferencjami",
+    "tabs": {
+      "profile": "Profil",
+      "billing": "Płatności",
+      "notifications": "Powiadomienia",
+      "apiKeys": "Klucze API",
+      "preferences": "Preferencje"
+    },
+    "profile": {
+      "anonymous": "Użytkownik anonimowy",
+      "memberSince": "Członek od",
+      "manageAccount": "Zarządzaj kontem"
+    },
+    "billing": {
+      "currentPlan": "Aktualny plan",
+      "manageBilling": "Zarządzaj płatnościami",
+      "upgrade": "Ulepsz plan",
+      "currentPlanLabel": "Aktualny plan",
+      "free": "Darmowy",
+      "month": "mies.",
+      "popular": "Najpopularniejszy",
+      "plans": {
+        "free": {
+          "name": "Darmowy",
+          "f1": "100 zapytań API dziennie",
+          "f2": "5 subskrypcji alertów",
+          "f3": "1 symulacja miesięcznie"
+        },
+        "pro": {
+          "name": "Pro",
+          "f1": "10 000 zapytań API dziennie",
+          "f2": "Nieograniczone subskrypcje alertów",
+          "f3": "50 symulacji miesięcznie",
+          "f4": "Priorytetowe wsparcie e-mail"
+        },
+        "business": {
+          "name": "Business",
+          "f1": "100 000 zapytań API dziennie",
+          "f2": "Programowy dostęp przez klucz API",
+          "f3": "Priorytetowe wsparcie z SLA",
+          "f4": "Niestandardowe integracje webhook"
+        }
+      }
+    },
+    "notifications": {
+      "activeSubscriptions": "Aktywne subskrypcje",
+      "noSubscriptions": "Nie masz jeszcze subskrypcji alertów. Utwórz jedną poniżej, aby zacząć otrzymywać powiadomienia.",
+      "addNew": "Dodaj nową subskrypcję",
+      "commodityLabel": "Surowiec",
+      "alertTypeLabel": "Typ alertu",
+      "minSeverityLabel": "Min. priorytet",
+      "anyCommodity": "Dowolny surowiec",
+      "anyType": "Dowolny typ",
+      "emailNotify": "E-mail",
+      "webhookNotify": "Webhook",
+      "webhookUrl": "Adres URL webhooka",
+      "email": "E-mail",
+      "webhook": "Webhook",
+      "addSubscription": "Dodaj subskrypcję",
+      "severity": {
+        "info": "Informacja",
+        "warning": "Ostrzeżenie",
+        "critical": "Krytyczny"
+      }
+    },
+    "apiKeys": {
+      "title": "Dostęp API",
+      "description": "Programowy dostęp do danych SupplyShock dla Twoich aplikacji i przepływów pracy.",
+      "proRequired": "Klucze API są dostępne w planach Pro i Business",
+      "exampleTitle": "Przykładowe zapytanie",
+      "features": {
+        "f1": "API REST z odpowiedziami JSON",
+        "f2": "Dane cenowe surowców w czasie rzeczywistym",
+        "f3": "Endpointy alertów i wąskich gardeł",
+        "f4": "Subskrypcje zdarzeń webhook"
+      }
+    },
+    "preferences": {
+      "title": "Preferencje",
+      "language": "Język",
+      "languageDesc": "Wybierz preferowany język interfejsu",
+      "theme": "Motyw",
+      "themeDesc": "Wybierz schemat kolorów aplikacji",
+      "dark": "Ciemny",
+      "light": "Jasny",
+      "refreshInterval": "Interwał odświeżania danych",
+      "refreshDesc": "Jak często dane na żywo odświeżają się automatycznie"
+    }
+  },
   "bottleneck": {
     "title": "Monitor wąskich gardeł",
     "nodes": "węzłów",
@@ -162,6 +303,49 @@
       "avgSpeed": "Śr. prędkość",
       "congestion": "Zatłoczenie",
       "riskLevel": "Poziom ryzyka"
+    }
+  },
+  "reports": {
+    "title": "Raporty",
+    "generate": "Generuj raport",
+    "generateTitle": "Generuj raport",
+    "generateFirst": "Wygeneruj pierwszy raport",
+    "emptyTitle": "Brak raportów",
+    "emptyDesc": "Wygeneruj swój pierwszy raport wywiadowczy łańcucha dostaw. Otrzymaj szczegółowe przeglądy rynku, analizy ryzyka i wgląd w surowce w formacie PDF.",
+    "pages": "{n} stron",
+    "linkedSimulation": "Powiązana symulacja",
+    "download": "Pobierz",
+    "share": "Udostępnij",
+    "shareCopied": "Link do udostępnienia skopiowany do schowka",
+    "shareError": "Nie udało się wygenerować linku do udostępnienia",
+    "deleteTitle": "Usuń raport",
+    "deleteConfirm": "Czy na pewno chcesz usunąć \"{title}\"? Tej operacji nie można cofnąć.",
+    "deleteSuccess": "Raport usunięty",
+    "deleteError": "Nie udało się usunąć raportu",
+    "generateSuccess": "Rozpoczęto generowanie raportu",
+    "generateError": "Nie udało się wygenerować raportu",
+    "fetchError": "Nie udało się załadować raportów",
+    "planLimit": "Osiągnięto limit raportów na planie darmowym.",
+    "upgradePlan": "Zmień plan",
+    "status": {
+      "generating": "Generowanie",
+      "ready": "Gotowy",
+      "failed": "Błąd"
+    },
+    "types": {
+      "marketOverview": "Przegląd rynku",
+      "supplyChainRisk": "Ryzyko łańcucha dostaw",
+      "commodityAnalysis": "Analiza surowców",
+      "custom": "Niestandardowy"
+    },
+    "form": {
+      "title": "Tytuł raportu",
+      "titlePlaceholder": "np. Przegląd rynku ropy naftowej Q1 2026",
+      "simulation": "Powiązana symulacja",
+      "noSimulation": "Brak (raport samodzielny)",
+      "type": "Typ raportu",
+      "dateFrom": "Data od",
+      "dateTo": "Data do"
     }
   }
 }

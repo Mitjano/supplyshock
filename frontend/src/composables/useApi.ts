@@ -42,7 +42,27 @@ export function useApi() {
     return res.json()
   }
 
-  return { get, post }
+  async function del<T>(path: string): Promise<T> {
+    const token = await auth.getToken()
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+    if (token) headers['Authorization'] = `Bearer ${token}`
+
+    const res = await fetch(`${API_BASE}${path}`, {
+      method: 'DELETE',
+      headers,
+    })
+
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({ detail: res.statusText }))
+      throw new ApiError(res.status, error.detail || 'Request failed')
+    }
+
+    // 204 No Content
+    if (res.status === 204) return undefined as T
+    return res.json()
+  }
+
+  return { get, post, del }
 }
 
 export class ApiError extends Error {
