@@ -1,7 +1,7 @@
 """Email sending via Resend API with Jinja2 templates.
 
 Usage:
-    from email.resend import send_email
+    from emails.resend import send_email
     await send_email("welcome_pro", "user@example.com", {"name": "John"})
 """
 

@@ -44,6 +44,7 @@ CREATE TABLE users (
     plan            plan_type NOT NULL DEFAULT 'free',
     plan_expires_at TIMESTAMPTZ,                -- NULL = lifetime / not applicable
     stripe_customer_id TEXT UNIQUE,             -- set after first Stripe interaction
+    payment_failure_count INT NOT NULL DEFAULT 0,  -- consecutive Stripe payment failures (reset on success)
     -- Simulation count: derive via SELECT COUNT(*) FROM simulations
     -- WHERE user_id=? AND created_at >= date_trunc('month', NOW())
     last_seen_at    TIMESTAMPTZ,

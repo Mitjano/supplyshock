@@ -464,13 +464,13 @@ Patrz sekcja "Auth rules" w CLAUDE.md. Używaj biblioteki `clerk-backend-api` lu
 - [ ] Email po pomyślnym upgrade planu ("Witaj w Pro!")
 - [ ] Email przy payment_failed ("Płatność nieudana")
 - [ ] Email z alertem krytycznym (jeśli user ma notify_email=true)
-- [ ] Wszystkie szablony w `backend/email/templates/` jako Jinja2 HTML templates
+- [ ] Wszystkie szablony w `backend/emails/templates/` jako Jinja2 HTML templates
 
 **Pliki do stworzenia:**
-- `backend/email/resend.py`
-- `backend/email/templates/welcome_pro.html`
-- `backend/email/templates/payment_failed.html`
-- `backend/email/templates/critical_alert.html`
+- `backend/emails/resend.py`
+- `backend/emails/templates/welcome_pro.html`
+- `backend/emails/templates/payment_failed.html`
+- `backend/emails/templates/critical_alert.html`
 
 ---
 
@@ -855,7 +855,7 @@ backend/simulation/poc_newcastle.py  ← NOWY (POC script)
 
 **Pliki do stworzenia:**
 - `frontend/src/components/OnboardingChecklist.vue`
-- `backend/email/templates/welcome.tsx`
+- `backend/emails/templates/welcome.tsx`
 - Dodaj `onboarding_completed_steps JSONB` do tabeli `users` (Alembic migration)
 - Dodaj Clerk webhook handler dla `user.created` event
 

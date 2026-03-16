@@ -50,7 +50,7 @@ combining vessel tracking + price signals + supply chain risk.
 | Map | MapLibre GL JS + Deck.gl | Open-source, $0 always. npm: `maplibre-gl` |
 | Auth | Clerk | Google + email + GitHub OAuth; use `@clerk/clerk-js` (no official Vue SDK) |
 | Payments | Stripe | Webhooks in `/backend/webhooks` |
-| Email | Resend + Jinja2 templates | Transactional only; templates in `backend/email/templates/*.html` |
+| Email | Resend + Jinja2 templates | Transactional only; templates in `backend/emails/templates/*.html` |
 | Reverse proxy | Nginx | TLS termination via Let's Encrypt |
 | Containers | Docker + Docker Compose | One compose file per environment |
 | CI | GitHub Actions | Lint → test → build → deploy |
