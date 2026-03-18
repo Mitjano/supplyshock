@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from config import settings
 from dependencies import get_db
 from middleware.auth import require_auth
 from middleware.rate_limit import check_api_rate_limit
@@ -91,6 +92,13 @@ async def sync_user(
     if not clerk_user_id:
         raise HTTPException(status_code=401, detail={"error": "Invalid token payload", "code": "INVALID_TOKEN"})
 
+    # Check if user already exists (for welcome email logic)
+    existing = await db.execute(
+        text("SELECT 1 FROM users WHERE clerk_user_id = :clerk_id"),
+        {"clerk_id": clerk_user_id},
+    )
+    is_new = existing.first() is None
+
     # Upsert: insert if new, update if existing
     result = await db.execute(
         text("""
@@ -113,6 +121,17 @@ async def sync_user(
     )
     await db.commit()
     row = result.mappings().first()
+    if is_new and email:
+        try:
+            from emails.resend import send_template_email
+            send_template_email(
+                to=email,
+                subject="Welcome to SupplyShock",
+                template="welcome.html",
+                context={"name": name or "there", "app_url": settings.FRONTEND_URL},
+            )
+        except Exception as e:
+            logger.warning("Failed to send welcome email to %s: %s", email, e)
 
     return {
         "data": {
@@ -124,6 +143,35 @@ async def sync_user(
             "created_at": row["created_at"].isoformat(),
         }
     }
+
+
+@router.post("/onboarding")
+async def update_onboarding(
+    request: Request,
+    user: dict[str, Any] = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update onboarding step completion."""
+    body = await request.json()
+    step = body.get("step")
+    if step not in ("explore_map", "first_simulation", "setup_alert"):
+        raise HTTPException(status_code=400, detail="Invalid onboarding step")
+
+    clerk_id = user.get("sub")
+    if not clerk_id:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    await db.execute(
+        text("""
+            UPDATE users
+            SET onboarding_completed_steps = onboarding_completed_steps || jsonb_build_object(:step, true),
+                updated_at = NOW()
+            WHERE clerk_user_id = :cid
+        """),
+        {"step": step, "cid": clerk_id},
+    )
+    await db.commit()
+    return {"status": "ok", "step": step}
 
 
 @router.delete("/me")

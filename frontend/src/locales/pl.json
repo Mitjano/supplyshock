@@ -41,7 +41,16 @@
     "bottleneckRisk": "Ryzyko wąskich gardeł",
     "recentAlerts": "Ostatnie alerty",
     "topMovers": "Największe zmiany",
-    "viewAll": "Zobacz wszystko"
+    "viewAll": "Zobacz wszystko",
+    "onboarding": {
+      "title": "Rozpocznij",
+      "subtitle": "Wykonaj te kroki, aby w pełni wykorzystać SupplyShock",
+      "exploreMap": "Przeglądaj mapę statków na żywo",
+      "firstSimulation": "Uruchom pierwszą symulację łańcucha dostaw",
+      "setupAlert": "Skonfiguruj alert surowcowy",
+      "completed": "Gotowe! Możesz zaczynać.",
+      "dismiss": "Zamknij"
+    }
   },
   "commodities": {
     "title": "Ceny surowców",

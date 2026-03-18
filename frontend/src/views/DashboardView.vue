@@ -51,6 +51,60 @@
       </div>
     </div>
 
+    <!-- Onboarding checklist (for new users) -->
+    <div v-if="showOnboarding" class="ss-card onboarding-card">
+      <div class="onboarding-header">
+        <div>
+          <h3>{{ t('dashboard.onboarding.title') }}</h3>
+          <p class="text-secondary">{{ t('dashboard.onboarding.subtitle') }}</p>
+        </div>
+        <button class="onboarding-dismiss" @click="dismissOnboarding">
+          <i class="pi pi-times" />
+        </button>
+      </div>
+      <div class="onboarding-steps">
+        <router-link
+          :to="localePath('/map')"
+          class="onboarding-step"
+          :class="{ completed: onboardingSteps.explore_map }"
+          @click="completeStep('explore_map')"
+        >
+          <span class="step-icon">
+            <i :class="onboardingSteps.explore_map ? 'pi pi-check-circle' : 'pi pi-map'" />
+          </span>
+          <span class="step-label">{{ t('dashboard.onboarding.exploreMap') }}</span>
+          <i class="pi pi-arrow-right step-arrow" />
+        </router-link>
+        <router-link
+          :to="localePath('/simulations')"
+          class="onboarding-step"
+          :class="{ completed: onboardingSteps.first_simulation }"
+          @click="completeStep('first_simulation')"
+        >
+          <span class="step-icon">
+            <i :class="onboardingSteps.first_simulation ? 'pi pi-check-circle' : 'pi pi-play'" />
+          </span>
+          <span class="step-label">{{ t('dashboard.onboarding.firstSimulation') }}</span>
+          <i class="pi pi-arrow-right step-arrow" />
+        </router-link>
+        <router-link
+          :to="localePath('/settings')"
+          class="onboarding-step"
+          :class="{ completed: onboardingSteps.setup_alert }"
+          @click="completeStep('setup_alert')"
+        >
+          <span class="step-icon">
+            <i :class="onboardingSteps.setup_alert ? 'pi pi-check-circle' : 'pi pi-bell'" />
+          </span>
+          <span class="step-label">{{ t('dashboard.onboarding.setupAlert') }}</span>
+          <i class="pi pi-arrow-right step-arrow" />
+        </router-link>
+      </div>
+      <div v-if="allStepsCompleted" class="onboarding-complete">
+        <i class="pi pi-check-circle" /> {{ t('dashboard.onboarding.completed') }}
+      </div>
+    </div>
+
     <!-- Two-column content -->
     <div class="dashboard-grid">
       <!-- Recent Alerts -->
@@ -213,6 +267,47 @@ const topMovers = ref<any[]>([])
 const loadingBottlenecks = ref(true)
 const bottleneckItems = ref<any[]>([])
 
+// Onboarding
+const onboardingSteps = ref<Record<string, boolean>>({
+  explore_map: false,
+  first_simulation: false,
+  setup_alert: false,
+})
+const onboardingDismissed = ref(false)
+
+const showOnboarding = computed(() => {
+  if (onboardingDismissed.value) return false
+  return !allStepsCompleted.value
+})
+
+const allStepsCompleted = computed(() =>
+  Object.values(onboardingSteps.value).every(Boolean)
+)
+
+function completeStep(step: string) {
+  onboardingSteps.value[step] = true
+  localStorage.setItem('ss_onboarding', JSON.stringify(onboardingSteps.value))
+  // Also persist to backend
+  api.post('/auth/onboarding', { step }).catch(() => {})
+}
+
+function dismissOnboarding() {
+  onboardingDismissed.value = true
+  localStorage.setItem('ss_onboarding_dismissed', 'true')
+}
+
+function loadOnboardingState() {
+  const dismissed = localStorage.getItem('ss_onboarding_dismissed')
+  if (dismissed === 'true') {
+    onboardingDismissed.value = true
+    return
+  }
+  const saved = localStorage.getItem('ss_onboarding')
+  if (saved) {
+    try { onboardingSteps.value = JSON.parse(saved) } catch {}
+  }
+}
+
 // Sparkline charts
 const sparklineInstances = new Map<string, echarts.ECharts>()
 
@@ -328,7 +423,10 @@ async function fetchDashboard() {
   kpis.value.bottleneckRisk = 'High'
 }
 
-onMounted(fetchDashboard)
+onMounted(() => {
+  loadOnboardingState()
+  fetchDashboard()
+})
 </script>
 
 <style scoped>
@@ -586,5 +684,61 @@ onMounted(fetchDashboard)
 
 .bottleneck-region {
   font-size: 0.75rem;
+}
+
+/* Onboarding */
+.onboarding-card {
+  margin-bottom: 1.5rem;
+  border: 1px solid var(--ss-accent, #3b82f6);
+  background: var(--ss-bg-elevated, rgba(59,130,246,0.05));
+}
+
+.onboarding-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 1rem;
+}
+
+.onboarding-header h3 { font-size: 1.1rem; font-weight: 700; margin-bottom: 0.25rem; }
+.onboarding-header p { font-size: 0.85rem; }
+
+.onboarding-dismiss {
+  background: none; border: none; cursor: pointer;
+  color: var(--text-secondary, #94a3b8); font-size: 1rem;
+  padding: 0.25rem;
+}
+
+.onboarding-steps {
+  display: flex; flex-direction: column; gap: 0.5rem;
+}
+
+.onboarding-step {
+  display: flex; align-items: center; gap: 0.75rem;
+  padding: 0.75rem 1rem; border-radius: 8px;
+  background: var(--ss-bg-base, rgba(255,255,255,0.03));
+  text-decoration: none; color: inherit; transition: all 0.2s;
+  border: 1px solid transparent;
+}
+
+.onboarding-step:hover {
+  background: var(--ss-bg-hover, rgba(255,255,255,0.06));
+  border-color: var(--ss-border-light, #2a2a3e);
+}
+
+.onboarding-step.completed {
+  opacity: 0.6;
+}
+
+.onboarding-step.completed .step-icon i { color: var(--ss-success, #22c55e); }
+
+.step-icon { font-size: 1.2rem; width: 24px; text-align: center; }
+.step-label { flex: 1; font-size: 0.9rem; font-weight: 500; }
+.step-arrow { color: var(--text-secondary, #94a3b8); font-size: 0.8rem; }
+
+.onboarding-complete {
+  margin-top: 0.75rem; padding: 0.5rem 1rem;
+  text-align: center; font-size: 0.85rem; font-weight: 600;
+  color: var(--ss-success, #22c55e);
 }
 </style>

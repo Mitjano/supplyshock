@@ -41,7 +41,16 @@
     "bottleneckRisk": "Bottleneck Risk",
     "recentAlerts": "Recent Alerts",
     "topMovers": "Top Movers",
-    "viewAll": "View all"
+    "viewAll": "View all",
+    "onboarding": {
+      "title": "Get Started",
+      "subtitle": "Complete these steps to get the most out of SupplyShock",
+      "exploreMap": "Explore the live vessel map",
+      "firstSimulation": "Run your first supply chain simulation",
+      "setupAlert": "Set up a commodity alert",
+      "completed": "All done! You're ready to go.",
+      "dismiss": "Dismiss"
+    }
   },
   "commodities": {
     "title": "Commodity Prices",
