@@ -13,13 +13,10 @@ celery_app = Celery(
     backend=settings.CELERY_RESULT_BACKEND,
 )
 
+# Load queue routing, timeouts, and worker settings from celeryconfig (Issue #103)
+celery_app.config_from_object("celeryconfig")
+
 celery_app.conf.update(
-    task_serializer="json",
-    result_serializer="json",
-    accept_content=["json"],
-    timezone="UTC",
-    enable_utc=True,
-    task_time_limit=600,
     beat_schedule={
         "refresh-vessel-positions": {
             "task": "refresh_latest_vessel_positions",

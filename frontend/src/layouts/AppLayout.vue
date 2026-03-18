@@ -206,6 +206,7 @@ const currentPageTitle = computed(() => {
     '/analytics': t('nav.analytics'),
     '/fleet': t('nav.fleet'),
     '/macro': t('nav.macro'),
+    '/emissions': t('nav.emissions'),
   }
   return map[cleanPath.value] || 'Page'
 })
@@ -238,6 +239,7 @@ const navSections = computed(() => [
       { key: 'bottlenecks', icon: 'pi-exclamation-triangle', route: localePath('/bottlenecks'), label: () => t('nav.bottlenecks') },
       { key: 'compliance', icon: 'pi-shield', route: localePath('/compliance'), label: () => t('nav.compliance') },
       { key: 'fleet', icon: 'pi-truck', route: localePath('/fleet'), label: () => t('nav.fleet') },
+      { key: 'emissions', icon: 'pi-cloud', route: localePath('/emissions'), label: () => t('nav.emissions') },
     ]
   },
   {

@@ -24,7 +24,9 @@ router = APIRouter(prefix="/alerts", tags=["Alerts"])
 async def list_alerts(
     type: str | None = Query(None, description="Filter: news_event, ais_anomaly, price_move, etc."),
     severity: str | None = Query(None, description="Filter: info, warning, critical"),
+    priority: str | None = Query(None, description="Filter: critical, high, medium, low"),
     commodity: str | None = Query(None, description="Filter by commodity"),
+    unread: bool | None = Query(None, description="Filter unread only"),
     active_only: bool = Query(True, description="Only active (unresolved) alerts"),
     hours: int = Query(24, le=168, description="Lookback hours (max 7 days)"),
     offset: int = Query(0, ge=0),
@@ -45,8 +47,14 @@ async def list_alerts(
     if commodity:
         conditions.append("commodity = :commodity")
         params["commodity"] = commodity
+    if priority:
+        conditions.append("severity = :priority")
+        params["priority"] = priority
+    if unread is True:
+        conditions.append("(is_read = FALSE OR is_read IS NULL)")
     if active_only:
         conditions.append("is_active = TRUE")
+        conditions.append("(snoozed_until IS NULL OR snoozed_until < NOW())")
 
     where = " AND ".join(conditions)
 
@@ -91,6 +99,80 @@ async def list_alerts(
         ],
         "meta": {"total": total, "offset": offset, "limit": limit},
     }
+
+
+@router.patch("/{alert_id}/read")
+async def mark_alert_read(
+    alert_id: str,
+    user: dict[str, Any] = Depends(check_api_rate_limit),
+    db: AsyncSession = Depends(get_db),
+):
+    """Mark a single alert as read."""
+    result = await db.execute(
+        text("""
+            UPDATE alert_events SET is_read = TRUE, read_at = NOW()
+            WHERE id = :alert_id
+            RETURNING id
+        """),
+        {"alert_id": alert_id},
+    )
+    row = result.fetchone()
+    if not row:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Alert not found")
+    await db.commit()
+    return {"status": "ok", "id": alert_id}
+
+
+@router.patch("/{alert_id}/snooze")
+async def snooze_alert(
+    alert_id: str,
+    hours: int = Query(4, ge=1, le=168, description="Snooze duration in hours"),
+    user: dict[str, Any] = Depends(check_api_rate_limit),
+    db: AsyncSession = Depends(get_db),
+):
+    """Snooze an alert for a given number of hours."""
+    result = await db.execute(
+        text("""
+            UPDATE alert_events
+            SET snoozed_until = NOW() + make_interval(hours => :hours)
+            WHERE id = :alert_id
+            RETURNING id
+        """),
+        {"alert_id": alert_id, "hours": hours},
+    )
+    row = result.fetchone()
+    if not row:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Alert not found")
+    await db.commit()
+    return {"status": "ok", "id": alert_id, "snoozed_hours": hours}
+
+
+@router.patch("/bulk/read")
+async def bulk_mark_read(
+    alert_ids: list[str] | None = Query(None, description="Alert IDs to mark read (all if omitted)"),
+    user: dict[str, Any] = Depends(check_api_rate_limit),
+    db: AsyncSession = Depends(get_db),
+):
+    """Bulk mark alerts as read."""
+    if alert_ids:
+        result = await db.execute(
+            text("""
+                UPDATE alert_events SET is_read = TRUE, read_at = NOW()
+                WHERE id = ANY(:ids) AND is_read = FALSE
+            """),
+            {"ids": alert_ids},
+        )
+    else:
+        result = await db.execute(
+            text("""
+                UPDATE alert_events SET is_read = TRUE, read_at = NOW()
+                WHERE is_read = FALSE AND is_active = TRUE
+            """)
+        )
+    await db.commit()
+    return {"status": "ok", "updated": result.rowcount}
 
 
 @router.get("/stats")

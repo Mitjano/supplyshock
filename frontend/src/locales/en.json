@@ -11,7 +11,8 @@
     "settings": "Settings",
     "compliance": "Compliance",
     "analytics": "Analytics",
-    "macro": "Macro"
+    "macro": "Macro",
+    "emissions": "Emissions"
   },
   "layout": {
     "overview": "OVERVIEW",
@@ -628,5 +629,37 @@
       "epu": "Economic Policy Uncertainty",
       "gpr": "Geopolitical Risk"
     }
+  },
+  "homeDashboard": {
+    "title": "Home Dashboard",
+    "topMover": "Top Mover",
+    "watchlistSummary": "Watchlist",
+    "watchlist": "Watchlist",
+    "emptyWatchlist": "No commodities in watchlist",
+    "activeVoyages": "Active Voyages",
+    "newsFeed": "News Feed",
+    "newsComingSoon": "Real-time news feed coming soon",
+    "marketHeatmap": "Market Heatmap"
+  },
+  "alertCenter": {
+    "markAllRead": "Mark All Read",
+    "markRead": "Mark as read",
+    "snooze": "Snooze 4h",
+    "unreadOnly": "Unread only"
+  },
+  "emissions": {
+    "title": "Emissions Dashboard",
+    "subtitle": "Fleet CO2 emissions, EEOI, and CII ratings",
+    "totalCO2": "Total CO2 (tonnes)",
+    "avgEEOI": "Avg EEOI",
+    "monthlyTrend": "Monthly CO2 Trend",
+    "vesselEmissions": "Vessel Emissions",
+    "vesselName": "Vessel",
+    "distance": "Distance",
+    "fuel": "Fuel"
+  },
+  "watchlist": {
+    "add": "Add to watchlist",
+    "remove": "Remove from watchlist"
   }
 }

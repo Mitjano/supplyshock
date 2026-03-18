@@ -6,6 +6,7 @@ import PrimeVue from 'primevue/config'
 import Aura from '@primevue/themes/aura'
 import 'primeicons/primeicons.css'
 import './assets/main.css'
+import './styles/responsive.css'
 import App from './App.vue'
 import { useAuthStore } from './stores/useAuthStore'
 import en from './locales/en.json'
@@ -17,12 +18,14 @@ const DEFAULT_LOCALE = 'pl'
 
 // Define page routes once, then generate with and without /en prefix
 const pageRoutes: RouteRecordRaw[] = [
-  { path: '', component: () => import('./views/DashboardView.vue') },
+  { path: '', component: () => import('./views/HomeDashboard.vue') },
+  { path: 'dashboard', component: () => import('./views/DashboardView.vue') },
   { path: 'login', component: () => import('./views/LoginView.vue') },
   { path: 'map', component: () => import('./views/MapView.vue') },
   { path: 'commodities', component: () => import('./views/CommodityDashboard.vue') },
   { path: 'bottlenecks', component: () => import('./views/BottleneckMonitor.vue') },
-  { path: 'alerts', component: () => import('./views/AlertsView.vue') },
+  { path: 'alerts', component: () => import('./views/AlertCenter.vue') },
+  { path: 'alerts-legacy', component: () => import('./views/AlertsView.vue') },
   { path: 'simulations', component: () => import('./views/SimulationsView.vue') },
   { path: 'reports', component: () => import('./views/ReportsView.vue') },
   { path: 'settings', component: () => import('./views/SettingsView.vue') },
@@ -30,6 +33,7 @@ const pageRoutes: RouteRecordRaw[] = [
   { path: 'analytics', component: () => import('./views/AnalyticsDashboard.vue') },
   { path: 'fleet', component: () => import('./views/FleetAnalytics.vue') },
   { path: 'macro', component: () => import('./views/MacroDashboard.vue') },
+  { path: 'emissions', component: () => import('./views/EmissionsDashboard.vue') },
 ]
 
 const router = createRouter({

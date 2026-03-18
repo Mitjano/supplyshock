@@ -1,0 +1,166 @@
+/* ── SupplyShock Responsive Breakpoints ──
+ * Mobile:  <= 480px
+ * Tablet:  481px – 768px
+ * Desktop: 769px – 1280px
+ * Wide:    > 1280px
+ */
+
+/* View container responsive padding */
+.view-container {
+  padding: 1.5rem;
+}
+
+@media (max-width: 768px) {
+  .view-container {
+    padding: 1rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .view-container {
+    padding: 0.75rem;
+  }
+}
+
+/* Generic grid utilities */
+.grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1rem;
+}
+
+.grid-3 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+}
+
+.grid-4 {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1rem;
+}
+
+@media (max-width: 1024px) {
+  .grid-4 { grid-template-columns: repeat(2, 1fr); }
+  .grid-3 { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 768px) {
+  .grid-4,
+  .grid-3,
+  .grid-2 {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Card responsive */
+.ss-card {
+  overflow: hidden;
+}
+
+@media (max-width: 768px) {
+  .ss-card {
+    border-radius: var(--ss-radius-sm, 6px);
+  }
+}
+
+/* Table responsive */
+.table-responsive {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+@media (max-width: 768px) {
+  .ss-table th,
+  .ss-table td {
+    padding: 0.4rem 0.6rem;
+    font-size: 0.8rem;
+  }
+}
+
+/* Button responsive */
+@media (max-width: 480px) {
+  .ss-btn {
+    padding: 0.5rem 0.75rem;
+    font-size: 0.8rem;
+  }
+
+  .ss-btn--sm {
+    padding: 0.35rem 0.6rem;
+    font-size: 0.75rem;
+  }
+}
+
+/* Select responsive */
+@media (max-width: 480px) {
+  .ss-select {
+    font-size: 0.8rem;
+    padding: 0.4rem 0.6rem;
+  }
+}
+
+/* Header responsive */
+@media (max-width: 768px) {
+  .view-container h1 {
+    font-size: 1.25rem;
+  }
+}
+
+/* Chart containers responsive */
+.chart-container {
+  width: 100%;
+  min-height: 250px;
+}
+
+@media (max-width: 768px) {
+  .chart-container {
+    min-height: 200px;
+  }
+}
+
+/* Hide on mobile/desktop helpers */
+@media (max-width: 768px) {
+  .hide-mobile { display: none !important; }
+}
+
+@media (min-width: 769px) {
+  .hide-desktop { display: none !important; }
+}
+
+/* Stack on mobile */
+@media (max-width: 768px) {
+  .stack-mobile {
+    flex-direction: column !important;
+  }
+
+  .stack-mobile > * {
+    width: 100% !important;
+  }
+}
+
+/* Filters responsive */
+@media (max-width: 768px) {
+  .filters-row {
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .filters-row .filter-group {
+    width: 100%;
+  }
+
+  .severity-toggles {
+    flex-wrap: wrap;
+  }
+}
+
+/* Touch-friendly hit areas */
+@media (hover: none) and (pointer: coarse) {
+  .action-btn,
+  .nav-item,
+  .sev-btn {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}

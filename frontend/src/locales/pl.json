@@ -11,7 +11,8 @@
     "settings": "Ustawienia",
     "compliance": "Zgodność",
     "analytics": "Analityka",
-    "macro": "Makro"
+    "macro": "Makro",
+    "emissions": "Emisje"
   },
   "layout": {
     "overview": "PRZEGLĄD",
@@ -628,5 +629,37 @@
       "epu": "Niepewność polityki gospodarczej",
       "gpr": "Ryzyko geopolityczne"
     }
+  },
+  "homeDashboard": {
+    "title": "Panel główny",
+    "topMover": "Największa zmiana",
+    "watchlistSummary": "Obserwowane",
+    "watchlist": "Obserwowane",
+    "emptyWatchlist": "Brak surowców na liście obserwowanych",
+    "activeVoyages": "Aktywne rejsy",
+    "newsFeed": "Wiadomości",
+    "newsComingSoon": "Kanał wiadomości w czasie rzeczywistym wkrótce",
+    "marketHeatmap": "Mapa cieplna rynku"
+  },
+  "alertCenter": {
+    "markAllRead": "Oznacz wszystko jako przeczytane",
+    "markRead": "Oznacz jako przeczytane",
+    "snooze": "Wycisz na 4h",
+    "unreadOnly": "Tylko nieprzeczytane"
+  },
+  "emissions": {
+    "title": "Panel emisji",
+    "subtitle": "Emisje CO2 floty, EEOI i oceny CII",
+    "totalCO2": "Łączne CO2 (tony)",
+    "avgEEOI": "Śr. EEOI",
+    "monthlyTrend": "Miesięczny trend CO2",
+    "vesselEmissions": "Emisje statków",
+    "vesselName": "Statek",
+    "distance": "Dystans",
+    "fuel": "Paliwo"
+  },
+  "watchlist": {
+    "add": "Dodaj do obserwowanych",
+    "remove": "Usuń z obserwowanych"
   }
 }

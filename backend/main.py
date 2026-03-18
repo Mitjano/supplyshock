@@ -1,6 +1,8 @@
 import sentry_sdk
 from sentry_sdk.integrations.fastapi import FastApiIntegration
 from sentry_sdk.integrations.starlette import StarletteIntegration
+from sentry_sdk.integrations.celery import CeleryIntegration
+from sentry_sdk.integrations.logging import LoggingIntegration
 import redis.asyncio as aioredis
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -8,6 +10,11 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from config import settings
+from logging_config import setup_logging
+
+# ── Structured logging (Issue #109) ──
+setup_logging()
+
 from api.v1.auth import router as auth_router
 from api.v1.vessels import router as vessels_router
 from api.v1.ports import router as ports_router
@@ -28,6 +35,7 @@ from api.v1.export import router as export_router
 from api.v1.webhooks import router as webhooks_router
 from api.v1.infrastructure import router as infrastructure_router
 from api.v1.analytics import router as analytics_router
+from api.v1.admin import router as admin_router
 from api.v1.fleet import router as fleet_router
 from api.v1.notifications import router as notifications_router
 from api.v1.events import router as events_router
@@ -37,6 +45,7 @@ from api.v1.fx import router as fx_router
 from api.v1.risk import router as risk_router
 from api.v1.crops import router as crops_router
 from api.v1.sentiment import router as sentiment_router
+from api.v1.watchlist import router as watchlist_router
 from webhooks.stripe import router as stripe_webhook_router
 
 # ── Sentry ──
@@ -49,6 +58,8 @@ if settings.SENTRY_DSN:
         integrations=[
             FastApiIntegration(),
             StarletteIntegration(),
+            CeleryIntegration(),
+            LoggingIntegration(level=None, event_level="ERROR"),
         ],
     )
 
@@ -148,6 +159,8 @@ app.include_router(fx_router, prefix="/api/v1")
 app.include_router(risk_router, prefix="/api/v1")
 app.include_router(crops_router, prefix="/api/v1")
 app.include_router(sentiment_router, prefix="/api/v1")
+app.include_router(watchlist_router, prefix="/api/v1")
+app.include_router(admin_router, prefix="/api/v1")
 
 # ── Webhooks (no /api/v1 prefix) ──
 app.include_router(stripe_webhook_router)

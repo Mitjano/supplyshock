@@ -31,6 +31,7 @@ async def global_search(
         "ports": [],
         "commodities": [],
         "chokepoints": [],
+        "events": [],
     }
 
     # Vessels: search by name, MMSI, IMO
@@ -111,6 +112,27 @@ async def global_search(
         results["commodities"].append({
             "commodity": r["commodity"],
             "benchmark": r["benchmark"],
+        })
+
+    # Events: search alert titles
+    event_result = await db.execute(
+        text("""
+            SELECT id, title, type, severity, commodity, time
+            FROM alert_events
+            WHERE title ILIKE :like
+            ORDER BY time DESC
+            LIMIT :limit
+        """),
+        params,
+    )
+    for r in event_result.mappings().all():
+        results["events"].append({
+            "id": str(r["id"]),
+            "title": r["title"],
+            "type": r["type"],
+            "severity": r["severity"],
+            "commodity": r["commodity"],
+            "time": r["time"].isoformat() if r["time"] else None,
         })
 
     total = sum(len(v) for v in results.values())
