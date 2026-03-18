@@ -164,3 +164,10 @@ app.include_router(admin_router, prefix="/api/v1")
 
 # ── Webhooks (no /api/v1 prefix) ──
 app.include_router(stripe_webhook_router)
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Clean up connections on shutdown."""
+    await redis_client.close()
+    await engine.dispose()

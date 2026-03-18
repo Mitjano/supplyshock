@@ -14,6 +14,8 @@ celery_app = Celery(
 )
 
 # Load queue routing, timeouts, and worker settings from celeryconfig (Issue #103)
+# NOTE: config_from_object loads celeryconfig.py (queue routing, timeouts).
+# beat_schedule below intentionally overrides any schedule in celeryconfig.
 celery_app.config_from_object("celeryconfig")
 
 celery_app.conf.update(
@@ -1038,7 +1040,6 @@ def update_port_congestion_task(self):
     """
     try:
         from analytics.port_congestion import update_all_port_congestion
-        from dependencies import get_db
 
         loop = asyncio.new_event_loop()
         try:
@@ -1077,7 +1078,6 @@ def update_voyage_predictions_task(self):
             async_session = async_sessionmaker(engine, expire_on_commit=False)
 
             async def _run():
-                import redis as aioredis
                 async with async_session() as db:
                     # Get all underway voyages with a destination
                     from sqlalchemy import text

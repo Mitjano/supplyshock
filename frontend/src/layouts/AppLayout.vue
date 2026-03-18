@@ -207,6 +207,8 @@ const currentPageTitle = computed(() => {
     '/fleet': t('nav.fleet'),
     '/macro': t('nav.macro'),
     '/emissions': t('nav.emissions'),
+    '/dashboard': t('nav.dashboard'),
+    '/compliance': t('nav.compliance'),
   }
   return map[cleanPath.value] || 'Page'
 })

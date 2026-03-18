@@ -203,7 +203,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useComplianceStore } from '../stores/useComplianceStore'
+import { useComplianceStore } from '@/stores/useComplianceStore'
 
 const { t } = useI18n()
 const store = useComplianceStore()
