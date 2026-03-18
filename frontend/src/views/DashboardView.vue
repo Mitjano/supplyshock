@@ -57,7 +57,7 @@
       <div class="ss-card">
         <div class="card-header">
           <h3>{{ t('dashboard.recentAlerts') }}</h3>
-          <router-link to="/alerts" class="card-link">
+          <router-link :to="localePath('/alerts')" class="card-link">
             {{ t('dashboard.viewAll') }} <i class="pi pi-arrow-right" />
           </router-link>
         </div>
@@ -88,7 +88,7 @@
       <div class="ss-card">
         <div class="card-header">
           <h3>{{ t('dashboard.topMovers') }}</h3>
-          <router-link to="/commodities" class="card-link">
+          <router-link :to="localePath('/commodities')" class="card-link">
             {{ t('dashboard.viewAll') }} <i class="pi pi-arrow-right" />
           </router-link>
         </div>
@@ -127,7 +127,7 @@
     <div class="ss-card bottleneck-overview">
       <div class="card-header">
         <h3>{{ t('dashboard.bottleneckStatus') }}</h3>
-        <router-link to="/bottlenecks" class="card-link">
+        <router-link :to="localePath('/bottlenecks')" class="card-link">
           {{ t('dashboard.viewAll') }} <i class="pi pi-arrow-right" />
         </router-link>
       </div>
@@ -162,6 +162,7 @@ import { ref, computed, onMounted, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '@/stores/useAuthStore'
 import { useApi } from '@/composables/useApi'
+import { useLocalePath } from '@/composables/useLocalePath'
 import * as echarts from 'echarts/core'
 import { LineChart } from 'echarts/charts'
 import { GridComponent } from 'echarts/components'
@@ -172,6 +173,7 @@ echarts.use([LineChart, GridComponent, CanvasRenderer])
 const { t } = useI18n()
 const auth = useAuthStore()
 const api = useApi()
+const { localePath } = useLocalePath()
 
 const userName = computed(() => auth.user?.name?.split(' ')[0] || auth.user?.email || 'User')
 

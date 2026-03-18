@@ -26,6 +26,7 @@ SUBJECTS: dict[str, str] = {
     "payment_failed": "Payment failed — action required",
     "critical_alert": "Critical Supply Chain Alert",
     "plan_downgraded": "Your plan has been downgraded",
+    "alert_notification": "SupplyShock Alert Notification",
 }
 
 

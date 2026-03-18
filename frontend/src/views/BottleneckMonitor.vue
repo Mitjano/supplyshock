@@ -226,10 +226,12 @@ import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useBottleneckStore } from '../stores/useBottleneckStore'
 import { useChart } from '../composables/useChart'
+import { useLocalePath } from '../composables/useLocalePath'
 
 const { t } = useI18n()
 const store = useBottleneckStore()
 const router = useRouter()
+const { localePath } = useLocalePath()
 
 // --- State ---
 const searchQuery = ref('')
@@ -300,7 +302,7 @@ function closeDetail() {
 function goToSimulation() {
   const slug = store.selectedBottleneck?.slug
   if (slug) {
-    router.push({ path: '/simulations', query: { node: slug } })
+    router.push({ path: localePath('/simulations'), query: { node: slug } })
   }
 }
 

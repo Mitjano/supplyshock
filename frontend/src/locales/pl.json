@@ -132,7 +132,21 @@
     "loadingBottlenecks": "Ładowanie danych wąskich gardeł...",
     "loadingAlerts": "Ładowanie alertów...",
     "errorBottlenecks": "Nie udało się załadować danych wąskich gardeł",
-    "errorAlerts": "Nie udało się załadować alertów"
+    "errorAlerts": "Nie udało się załadować alertów",
+    "laden": "Załadowany",
+    "ballast": "Balastowy",
+    "unknown": "Nieznany",
+    "callsign": "Sygnał wywoławczy",
+    "dimensions": "Wymiary",
+    "enRoute": "W drodze",
+    "voyages": "Rejsy",
+    "underway": "W trakcie",
+    "floatingStorage": "Pływający magazyn",
+    "noVoyages": "Brak aktywnych rejsów",
+    "loadingVoyages": "Ładowanie rejsów...",
+    "errorVoyages": "Nie udało się załadować rejsów",
+    "allStatuses": "Wszystkie statusy",
+    "vesselType": "Typ statku"
   },
   "simulations": {
     "title": "Symulacje",
@@ -170,7 +184,13 @@
     "recoveryDays": "Czas odbudowy",
     "affectedCommodities": "Dotknięte surowce",
     "priceChange": "Zmiana ceny",
+    "riskScore": "Ocena ryzyka",
+    "globalShare": "Udział globalny",
+    "liveProgress": "Postęp na żywo",
+    "submitFailed": "Nie udało się utworzyć symulacji",
     "unknownError": "Wystąpił nieznany błąd",
+    "tradeActions": "Decyzje handlowe",
+    "vesselReroutes": "Przekierowania statków",
     "emptyTitle": "Brak symulacji",
     "emptyDesc": "Utwórz swój pierwszy scenariusz zakłócenia powyżej.",
     "upgradeBannerTitle": "Plan darmowy — 1 symulacja miesięcznie",
@@ -197,7 +217,15 @@
     "profile": {
       "anonymous": "Użytkownik anonimowy",
       "memberSince": "Członek od",
-      "manageAccount": "Zarządzaj kontem"
+      "manageAccount": "Zarządzaj kontem",
+      "deleteAccount": "Usuń konto",
+      "deleteAccountDesc": "Trwale usuń swoje konto i wszystkie powiązane dane. Tej operacji nie można cofnąć.",
+      "deleteConfirmTitle": "Usunąć konto?",
+      "deleteConfirmMessage": "Spowoduje to trwałe usunięcie konta i wszystkich danych, w tym symulacji, raportów, kluczy API i subskrypcji alertów. Ta operacja jest nieodwracalna.",
+      "deleteConfirmButton": "Tak, usuń moje konto",
+      "deleteCancelButton": "Anuluj",
+      "deleteSuccess": "Konto zostało usunięte. Nastąpi przekierowanie.",
+      "deleteError": "Nie udało się usunąć konta. Spróbuj ponownie."
     },
     "billing": {
       "currentPlan": "Aktualny plan",
@@ -347,5 +375,17 @@
       "dateFrom": "Data od",
       "dateTo": "Data do"
     }
+  },
+  "search": {
+    "placeholder": "Szukaj statków, portów, surowców...",
+    "vessels": "Statki",
+    "ports": "Porty",
+    "chokepoints": "Wąskie gardła",
+    "commodities": "Surowce",
+    "noResults": "Brak wyników",
+    "recent": "Ostatnie wyszukiwania",
+    "navigate": "Nawiguj",
+    "select": "Wybierz",
+    "close": "Zamknij"
   }
 }

@@ -1,7 +1,8 @@
 """Port endpoints — /api/v1/ports/*
 
-- GET /ports         — list/filter ports (bbox, major, commodity)
-- GET /ports/{id}    — port detail
+- GET /ports              — list/filter ports (bbox, major, commodity)
+- GET /ports/{id}         — port detail
+- GET /ports/{id}/vessels — vessels currently in port geofence
 """
 
 from typing import Any
@@ -11,6 +12,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from dependencies import get_db
+from geo.geofence import get_vessels_in_port
 from middleware.auth import require_auth
 from middleware.rate_limit import check_api_rate_limit
 
@@ -66,7 +68,7 @@ async def list_ports(
         text(f"""
             SELECT id, wpi_number, name, country_code, latitude, longitude,
                    region, harbor_type, commodities, annual_throughput_mt,
-                   is_major, is_chokepoint
+                   radius_km, is_major, is_chokepoint
             FROM ports
             {where}
             ORDER BY is_major DESC, name ASC
@@ -89,10 +91,76 @@ async def list_ports(
                 "harbor_type": row["harbor_type"],
                 "commodities": row["commodities"] or [],
                 "annual_throughput_mt": float(row["annual_throughput_mt"]) if row["annual_throughput_mt"] else None,
+                "radius_km": float(row["radius_km"]) if row["radius_km"] else 5.0,
                 "is_major": row["is_major"],
                 "is_chokepoint": row["is_chokepoint"],
             }
             for row in rows
         ],
         "meta": {"total": total, "offset": offset, "limit": limit},
+    }
+
+
+@router.get("/{port_id}")
+async def get_port(
+    port_id: str,
+    user: dict[str, Any] = Depends(check_api_rate_limit),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get port detail by ID."""
+    result = await db.execute(
+        text("""
+            SELECT id, wpi_number, name, country_code, latitude, longitude,
+                   region, harbor_type, max_vessel_size, commodities,
+                   annual_throughput_mt, radius_km, unlocode, is_major, is_chokepoint
+            FROM ports WHERE id = :port_id
+        """),
+        {"port_id": port_id},
+    )
+    row = result.mappings().first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Port not found")
+
+    return {
+        "id": str(row["id"]),
+        "wpi_number": row["wpi_number"],
+        "name": row["name"],
+        "country_code": row["country_code"],
+        "latitude": float(row["latitude"]),
+        "longitude": float(row["longitude"]),
+        "region": row["region"],
+        "harbor_type": row["harbor_type"],
+        "max_vessel_size": row["max_vessel_size"],
+        "commodities": row["commodities"] or [],
+        "annual_throughput_mt": float(row["annual_throughput_mt"]) if row["annual_throughput_mt"] else None,
+        "radius_km": float(row["radius_km"]) if row["radius_km"] else 5.0,
+        "unlocode": row["unlocode"],
+        "is_major": row["is_major"],
+        "is_chokepoint": row["is_chokepoint"],
+    }
+
+
+@router.get("/{port_id}/vessels")
+async def list_vessels_in_port(
+    port_id: str,
+    user: dict[str, Any] = Depends(check_api_rate_limit),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get vessels currently within a port's geofence radius.
+
+    Uses PostGIS ST_DWithin against latest_vessel_positions.
+    """
+    # Verify port exists
+    port_check = await db.execute(
+        text("SELECT id, name FROM ports WHERE id = :port_id"),
+        {"port_id": port_id},
+    )
+    if not port_check.mappings().first():
+        raise HTTPException(status_code=404, detail="Port not found")
+
+    vessels = await get_vessels_in_port(db, port_id)
+
+    return {
+        "data": vessels,
+        "meta": {"port_id": port_id, "vessel_count": len(vessels)},
     }

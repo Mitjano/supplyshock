@@ -56,6 +56,46 @@
             </button>
           </div>
         </div>
+
+        <!-- Danger Zone — Account Deletion -->
+        <div class="danger-zone ss-card">
+          <h3 class="section-title danger-title">
+            <i class="pi pi-exclamation-triangle" />
+            {{ t('settings.profile.deleteAccount') }}
+          </h3>
+          <p class="danger-desc">{{ t('settings.profile.deleteAccountDesc') }}</p>
+
+          <!-- Confirmation dialog -->
+          <div v-if="showDeleteConfirm" class="delete-confirm-box">
+            <p class="delete-confirm-msg">{{ t('settings.profile.deleteConfirmMessage') }}</p>
+            <div class="delete-confirm-actions">
+              <button
+                class="ss-btn ss-btn-danger"
+                :disabled="deletingAccount"
+                @click="confirmDeleteAccount"
+              >
+                <i :class="deletingAccount ? 'pi pi-spin pi-spinner' : 'pi pi-trash'" />
+                {{ t('settings.profile.deleteConfirmButton') }}
+              </button>
+              <button
+                class="ss-btn ss-btn-secondary"
+                :disabled="deletingAccount"
+                @click="showDeleteConfirm = false"
+              >
+                {{ t('settings.profile.deleteCancelButton') }}
+              </button>
+            </div>
+          </div>
+
+          <button
+            v-else
+            class="ss-btn ss-btn-danger-outline"
+            @click="showDeleteConfirm = true"
+          >
+            <i class="pi pi-trash" />
+            {{ t('settings.profile.deleteAccount') }}
+          </button>
+        </div>
       </section>
 
       <!-- ==================== BILLING TAB ==================== -->
@@ -347,10 +387,13 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, reactive } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/useAuthStore'
 import { useApi } from '@/composables/useApi'
 
 const { t, locale } = useI18n()
+const router = useRouter()
+const route = useRoute()
 const authStore = useAuthStore()
 const api = useApi()
 
@@ -389,6 +432,26 @@ const formattedMemberSince = computed(() => {
 
 function openClerkProfile() {
   authStore.clerk?.openUserProfile()
+}
+
+// ────────────── Account Deletion ──────────────
+const showDeleteConfirm = ref(false)
+const deletingAccount = ref(false)
+
+async function confirmDeleteAccount() {
+  deletingAccount.value = true
+  try {
+    await api.del('/auth/me')
+    // Sign out from Clerk and redirect
+    await authStore.clerk?.signOut()
+    router.push('/')
+  } catch (e) {
+    console.error('Account deletion failed:', e)
+    alert(t('settings.profile.deleteError'))
+  } finally {
+    deletingAccount.value = false
+    showDeleteConfirm.value = false
+  }
 }
 
 // ────────────── Billing ──────────────
@@ -562,18 +625,20 @@ const theme = ref('dark')
 const refreshInterval = ref('60')
 
 function changeLocale() {
-  locale.value = selectedLocale.value
-  localStorage.setItem('ss-locale', selectedLocale.value)
+  const newLocale = selectedLocale.value
+  localStorage.setItem('ss-locale', newLocale)
+
+  // Navigate to equivalent path with/without /en prefix
+  const currentPath = route.path
+  let basePath = currentPath.startsWith('/en/') ? currentPath.slice(3) : currentPath === '/en' ? '/' : currentPath
+  const newPath = newLocale === 'en' ? `/en${basePath === '/' ? '' : basePath}` : basePath
+  router.push(newPath)
 }
 
 // ────────────── Init ──────────────
 onMounted(() => {
-  // Restore saved locale
-  const savedLocale = localStorage.getItem('ss-locale')
-  if (savedLocale && ['en', 'pl'].includes(savedLocale)) {
-    selectedLocale.value = savedLocale
-    locale.value = savedLocale
-  }
+  // Sync locale selector with current URL-derived locale
+  selectedLocale.value = locale.value
 
   // Restore saved refresh interval
   const savedInterval = localStorage.getItem('ss-refresh-interval')
@@ -845,6 +910,67 @@ onMounted(() => {
 .profile-actions {
   border-top: 1px solid var(--ss-border-light);
   padding-top: 1.25rem;
+}
+
+/* ── Danger Zone ── */
+.danger-zone {
+  margin-top: 1.5rem;
+  max-width: 700px;
+  border-color: rgba(239, 68, 68, 0.3);
+}
+
+.danger-title {
+  color: var(--ss-danger, #ef4444);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.danger-desc {
+  color: var(--ss-text-muted);
+  font-size: 0.85rem;
+  margin: 0 0 1rem;
+}
+
+.delete-confirm-box {
+  background: rgba(239, 68, 68, 0.05);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  border-radius: var(--ss-radius);
+  padding: 1.25rem;
+}
+
+.delete-confirm-msg {
+  color: var(--ss-text-secondary);
+  font-size: 0.875rem;
+  margin: 0 0 1rem;
+  line-height: 1.5;
+}
+
+.delete-confirm-actions {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.ss-btn-danger {
+  background: #ef4444;
+  color: #fff;
+  border-color: #ef4444;
+}
+
+.ss-btn-danger:hover:not(:disabled) {
+  background: #dc2626;
+  border-color: #dc2626;
+}
+
+.ss-btn-danger-outline {
+  background: transparent;
+  color: #ef4444;
+  border-color: rgba(239, 68, 68, 0.4);
+}
+
+.ss-btn-danger-outline:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: #ef4444;
 }
 
 /* ── Billing Tab ── */

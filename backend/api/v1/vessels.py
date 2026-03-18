@@ -137,16 +137,24 @@ async def get_vessel_detail(
 ):
     """Get full vessel details by MMSI.
 
+    Combines latest position from vessel_positions with static data
+    from vessel_static_data (AIS Type 5: dimensions, DWT, callsign).
     Returns 404 if vessel hasn't been seen in the last 2 hours.
     """
     result = await db.execute(
         text("""
-            SELECT mmsi, imo, vessel_name, vessel_type, latitude, longitude,
-                   speed_knots, course, heading, destination, eta, draught,
-                   flag_country, cargo_type, time
-            FROM vessel_positions
-            WHERE mmsi = :mmsi AND time > NOW() - INTERVAL '2 hours'
-            ORDER BY time DESC
+            SELECT vp.mmsi, vp.imo, vp.vessel_name, vp.vessel_type,
+                   vp.latitude, vp.longitude,
+                   vp.speed_knots, vp.course, vp.heading,
+                   vp.destination, vp.eta, vp.draught,
+                   vp.flag_country, vp.cargo_type, vp.time,
+                   vs.callsign, vs.length_m, vs.beam_m,
+                   vs.dwt_estimate, vs.max_draught,
+                   vs.dim_a, vs.dim_b, vs.dim_c, vs.dim_d
+            FROM vessel_positions vp
+            LEFT JOIN vessel_static_data vs ON vs.mmsi = vp.mmsi
+            WHERE vp.mmsi = :mmsi AND vp.time > NOW() - INTERVAL '2 hours'
+            ORDER BY vp.time DESC
             LIMIT 1
         """),
         {"mmsi": mmsi},
@@ -159,25 +167,31 @@ async def get_vessel_detail(
             detail={"error": "Vessel not found in last 2 hours", "code": "VESSEL_NOT_FOUND"},
         )
 
-    return {
-        "data": {
-            "mmsi": row["mmsi"],
-            "imo": row["imo"],
-            "vessel_name": row["vessel_name"],
-            "vessel_type": row["vessel_type"],
-            "latitude": float(row["latitude"]),
-            "longitude": float(row["longitude"]),
-            "speed_knots": float(row["speed_knots"]) if row["speed_knots"] else None,
-            "course": float(row["course"]) if row["course"] else None,
-            "heading": float(row["heading"]) if row["heading"] else None,
-            "destination": row["destination"],
-            "eta": row["eta"].isoformat() if row["eta"] else None,
-            "draught": float(row["draught"]) if row["draught"] else None,
-            "flag_country": row["flag_country"],
-            "cargo_type": row["cargo_type"],
-            "time": row["time"].isoformat(),
-        }
+    data = {
+        "mmsi": row["mmsi"],
+        "imo": row["imo"],
+        "vessel_name": row["vessel_name"],
+        "vessel_type": row["vessel_type"],
+        "latitude": float(row["latitude"]),
+        "longitude": float(row["longitude"]),
+        "speed_knots": float(row["speed_knots"]) if row["speed_knots"] else None,
+        "course": float(row["course"]) if row["course"] else None,
+        "heading": float(row["heading"]) if row["heading"] else None,
+        "destination": row["destination"],
+        "eta": row["eta"].isoformat() if row["eta"] else None,
+        "draught": float(row["draught"]) if row["draught"] else None,
+        "flag_country": row["flag_country"],
+        "cargo_type": row["cargo_type"],
+        "time": row["time"].isoformat(),
+        # Static data from AIS Type 5 (may be NULL if not yet received)
+        "callsign": row["callsign"],
+        "length_m": float(row["length_m"]) if row["length_m"] else None,
+        "beam_m": float(row["beam_m"]) if row["beam_m"] else None,
+        "dwt_estimate": float(row["dwt_estimate"]) if row["dwt_estimate"] else None,
+        "max_draught": float(row["max_draught"]) if row["max_draught"] else None,
     }
+
+    return {"data": data}
 
 
 @router.get("/{mmsi}/trail")

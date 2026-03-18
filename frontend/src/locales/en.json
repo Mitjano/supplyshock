@@ -132,7 +132,21 @@
     "loadingBottlenecks": "Loading chokepoint data...",
     "loadingAlerts": "Loading alerts...",
     "errorBottlenecks": "Failed to load chokepoint data",
-    "errorAlerts": "Failed to load alerts"
+    "errorAlerts": "Failed to load alerts",
+    "laden": "Laden",
+    "ballast": "Ballast",
+    "unknown": "Unknown",
+    "callsign": "Callsign",
+    "dimensions": "Size",
+    "enRoute": "En route",
+    "voyages": "Voyages",
+    "underway": "Underway",
+    "floatingStorage": "Floating Storage",
+    "noVoyages": "No active voyages",
+    "loadingVoyages": "Loading voyages...",
+    "errorVoyages": "Failed to load voyages",
+    "allStatuses": "All statuses",
+    "vesselType": "Vessel type"
   },
   "simulations": {
     "title": "Simulations",
@@ -170,7 +184,13 @@
     "recoveryDays": "Recovery Time",
     "affectedCommodities": "Affected Commodities",
     "priceChange": "Price Change",
+    "riskScore": "Risk Score",
+    "globalShare": "Global Share",
+    "liveProgress": "Live Progress",
+    "submitFailed": "Failed to create simulation",
     "unknownError": "An unknown error occurred",
+    "tradeActions": "Trade Actions",
+    "vesselReroutes": "Vessel Reroutes",
     "emptyTitle": "No simulations yet",
     "emptyDesc": "Create your first disruption scenario above.",
     "upgradeBannerTitle": "Free plan — 1 simulation per month",
@@ -197,7 +217,15 @@
     "profile": {
       "anonymous": "Anonymous User",
       "memberSince": "Member since",
-      "manageAccount": "Manage Account"
+      "manageAccount": "Manage Account",
+      "deleteAccount": "Delete Account",
+      "deleteAccountDesc": "Permanently delete your account and all associated data. This action cannot be undone.",
+      "deleteConfirmTitle": "Delete Account?",
+      "deleteConfirmMessage": "This will permanently remove your account and all data including simulations, reports, API keys, and alert subscriptions. This action is irreversible.",
+      "deleteConfirmButton": "Yes, Delete My Account",
+      "deleteCancelButton": "Cancel",
+      "deleteSuccess": "Account deleted successfully. You will be redirected.",
+      "deleteError": "Failed to delete account. Please try again."
     },
     "billing": {
       "currentPlan": "Current Plan",
@@ -347,5 +375,17 @@
       "dateFrom": "Date From",
       "dateTo": "Date To"
     }
+  },
+  "search": {
+    "placeholder": "Search vessels, ports, commodities...",
+    "vessels": "Vessels",
+    "ports": "Ports",
+    "chokepoints": "Chokepoints",
+    "commodities": "Commodities",
+    "noResults": "No results found",
+    "recent": "Recent Searches",
+    "navigate": "Navigate",
+    "select": "Select",
+    "close": "Close"
   }
 }

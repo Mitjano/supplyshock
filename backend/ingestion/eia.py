@@ -44,6 +44,22 @@ EIA_SERIES = {
         "commodity": "lng",
         "unit": "mmbtu",
     },
+    "diesel": {
+        "route": "petroleum/pri/spt",
+        "facet_series": "EER_EPD2F_PF4_Y35NY_DPG",
+        "frequency": "daily",
+        "benchmark": "NY Harbor ULSD",
+        "commodity": "diesel",
+        "unit": "gallon",
+    },
+    "jet_fuel": {
+        "route": "petroleum/pri/spt",
+        "facet_series": "EER_EPJK_PF4_RGC_DPG",
+        "frequency": "daily",
+        "benchmark": "US Gulf Coast",
+        "commodity": "jet_fuel",
+        "unit": "gallon",
+    },
 }
 
 

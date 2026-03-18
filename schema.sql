@@ -27,6 +27,7 @@ CREATE TYPE simulation_status AS ENUM ('queued', 'running', 'completed', 'failed
 CREATE TYPE alert_severity AS ENUM ('info', 'warning', 'critical');
 CREATE TYPE vessel_type AS ENUM ('tanker', 'bulk_carrier', 'container', 'lng_carrier', 'general_cargo', 'other');
 CREATE TYPE report_status AS ENUM ('generating', 'ready', 'failed');
+CREATE TYPE voyage_status AS ENUM ('underway', 'arrived', 'floating_storage', 'completed');
 
 -- alert_type and commodity_type use TEXT + CHECK instead of ENUM
 -- so new values can be added without ALTER TYPE ... ADD VALUE migrations.
@@ -122,6 +123,8 @@ CREATE TABLE ports (
     max_vessel_size TEXT,                   -- VLCC, PANAMAX, HANDYMAX, etc.
     commodities     TEXT[],                 -- array: ['coal','iron_ore']
     annual_throughput_mt DECIMAL(12,2),     -- million tonnes per year, may be NULL
+    radius_km       DECIMAL(6,2) DEFAULT 5.0, -- geofence radius for voyage detection (#40)
+    unlocode        TEXT,                    -- UN/LOCODE e.g. 'AUMEL'
     is_major        BOOLEAN NOT NULL DEFAULT FALSE,
     is_chokepoint   BOOLEAN NOT NULL DEFAULT FALSE,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -129,9 +132,14 @@ CREATE TABLE ports (
 );
 
 CREATE INDEX idx_ports_country ON ports(country_code);
+CREATE INDEX idx_ports_unlocode ON ports(unlocode) WHERE unlocode IS NOT NULL;
 CREATE INDEX idx_ports_coords ON ports USING GIST (
     point(longitude, latitude)
 ) WHERE latitude IS NOT NULL AND longitude IS NOT NULL;
+-- PostGIS geography index for accurate km-distance geofencing (Issue #40)
+CREATE INDEX idx_ports_geog ON ports USING GIST (
+    ST_SetSRID(ST_MakePoint(longitude, latitude), 4326)::geography
+);
 
 -- ============================================================
 -- TRADE FLOWS
@@ -164,6 +172,65 @@ CREATE TABLE trade_flows (
 CREATE INDEX idx_trade_flows_commodity ON trade_flows(commodity);
 CREATE INDEX idx_trade_flows_period ON trade_flows(period_year, period_month);
 CREATE INDEX idx_trade_flows_route ON trade_flows(origin_country, destination_country);
+
+-- ============================================================
+-- VESSEL STATIC DATA
+-- (AIS Type 5 messages — one row per MMSI, upserted on each report)
+-- ============================================================
+
+CREATE TABLE vessel_static_data (
+    mmsi            BIGINT PRIMARY KEY,
+    imo             BIGINT,
+    vessel_name     TEXT,
+    callsign        TEXT,
+    ship_type       INT,                    -- raw AIS ship type code
+    vessel_type     vessel_type NOT NULL DEFAULT 'other',
+    dim_a           INT,                    -- bow to AIS antenna (m)
+    dim_b           INT,                    -- AIS antenna to stern (m)
+    dim_c           INT,                    -- port side to antenna (m)
+    dim_d           INT,                    -- antenna to starboard (m)
+    length_m        DECIMAL(7,2),           -- computed: dim_a + dim_b
+    beam_m          DECIMAL(7,2),           -- computed: dim_c + dim_d
+    dwt_estimate    DECIMAL(12,2),          -- estimated DWT from dimensions
+    max_draught     DECIMAL(5,2),           -- metres
+    flag_country    TEXT,
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_vsd_imo ON vessel_static_data(imo) WHERE imo IS NOT NULL;
+CREATE INDEX idx_vsd_type ON vessel_static_data(vessel_type);
+CREATE INDEX idx_vsd_updated ON vessel_static_data(updated_at DESC);
+
+-- ============================================================
+-- VOYAGES
+-- (automatic trip tracking — port enter/exit via geofencing)
+-- ============================================================
+
+CREATE TABLE voyages (
+    id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    mmsi                BIGINT NOT NULL,
+    imo                 BIGINT,
+    vessel_name         TEXT,
+    vessel_type         vessel_type NOT NULL DEFAULT 'other',
+    origin_port_id      UUID REFERENCES ports(id),
+    dest_port_id        UUID REFERENCES ports(id),
+    departure_time      TIMESTAMPTZ,
+    arrival_time        TIMESTAMPTZ,
+    status              voyage_status NOT NULL DEFAULT 'underway',
+    laden_status        TEXT,           -- 'laden', 'ballast', 'unknown'
+    cargo_type          TEXT,           -- commodity name from origin port
+    volume_estimate     DECIMAL(14,2), -- metric tonnes
+    distance_nm         DECIMAL(10,2), -- nautical miles (accumulated)
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_voyages_mmsi ON voyages(mmsi, departure_time DESC);
+CREATE INDEX idx_voyages_status ON voyages(status) WHERE status IN ('underway', 'arrived');
+CREATE INDEX idx_voyages_origin ON voyages(origin_port_id);
+CREATE INDEX idx_voyages_dest ON voyages(dest_port_id);
+CREATE INDEX idx_voyages_departure ON voyages(departure_time DESC);
+CREATE INDEX idx_voyages_cargo ON voyages(cargo_type) WHERE cargo_type IS NOT NULL;
 
 -- ============================================================
 -- VESSEL POSITIONS  [TimescaleDB hypertable]
@@ -489,6 +556,76 @@ CREATE TRIGGER set_updated_at BEFORE UPDATE ON reports
     FOR EACH ROW EXECUTE FUNCTION trigger_set_updated_at();
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON bottleneck_nodes
     FOR EACH ROW EXECUTE FUNCTION trigger_set_updated_at();
+CREATE TRIGGER set_updated_at BEFORE UPDATE ON vessel_static_data
+    FOR EACH ROW EXECUTE FUNCTION trigger_set_updated_at();
+CREATE TRIGGER set_updated_at BEFORE UPDATE ON voyages
+    FOR EACH ROW EXECUTE FUNCTION trigger_set_updated_at();
+
+-- ============================================================
+-- GEOFENCING FUNCTIONS (PostGIS)
+-- (Issue #40 — port enter/exit detection)
+-- ============================================================
+
+-- is_in_port(lat, lon) → closest port within its geofence radius, or empty
+CREATE OR REPLACE FUNCTION is_in_port(
+    p_lat DOUBLE PRECISION,
+    p_lon DOUBLE PRECISION
+)
+RETURNS TABLE (
+    port_id     UUID,
+    port_name   TEXT,
+    distance_km DOUBLE PRECISION
+)
+LANGUAGE sql STABLE
+AS $$
+    SELECT
+        p.id AS port_id,
+        p.name AS port_name,
+        ST_Distance(
+            ST_SetSRID(ST_MakePoint(p_lon, p_lat), 4326)::geography,
+            ST_SetSRID(ST_MakePoint(p.longitude, p.latitude), 4326)::geography
+        ) / 1000.0 AS distance_km
+    FROM ports p
+    WHERE ST_DWithin(
+        ST_SetSRID(ST_MakePoint(p_lon, p_lat), 4326)::geography,
+        ST_SetSRID(ST_MakePoint(p.longitude, p.latitude), 4326)::geography,
+        p.radius_km * 1000
+    )
+    ORDER BY distance_km ASC
+    LIMIT 1;
+$$;
+
+-- vessels_in_port(port_id) → all vessels inside port geofence
+CREATE OR REPLACE FUNCTION vessels_in_port(p_port_id UUID)
+RETURNS TABLE (
+    mmsi        BIGINT,
+    vessel_name TEXT,
+    vessel_type vessel_type,
+    distance_km DOUBLE PRECISION,
+    speed_knots DECIMAL(5,2),
+    last_seen   TIMESTAMPTZ
+)
+LANGUAGE sql STABLE
+AS $$
+    SELECT
+        v.mmsi,
+        v.vessel_name,
+        v.vessel_type,
+        ST_Distance(
+            ST_SetSRID(ST_MakePoint(v.longitude, v.latitude), 4326)::geography,
+            ST_SetSRID(ST_MakePoint(p.longitude, p.latitude), 4326)::geography
+        ) / 1000.0 AS distance_km,
+        v.speed_knots,
+        v.time AS last_seen
+    FROM latest_vessel_positions v, ports p
+    WHERE p.id = p_port_id
+      AND ST_DWithin(
+          ST_SetSRID(ST_MakePoint(v.longitude, v.latitude), 4326)::geography,
+          ST_SetSRID(ST_MakePoint(p.longitude, p.latitude), 4326)::geography,
+          p.radius_km * 1000
+      )
+    ORDER BY distance_km ASC;
+$$;
 
 -- ============================================================
 -- SEED DATA — BOTTLENECK NODES

@@ -16,7 +16,7 @@
     <div v-if="!isPro && reports.length >= 3" class="plan-banner">
       <i class="pi pi-lock" />
       <span>{{ t('reports.planLimit') }}</span>
-      <router-link to="/settings" class="plan-upgrade-link">{{ t('reports.upgradePlan') }}</router-link>
+      <router-link :to="localePath('/settings')" class="plan-upgrade-link">{{ t('reports.upgradePlan') }}</router-link>
     </div>
 
     <!-- Loading Skeleton -->
@@ -73,7 +73,7 @@
 
           <router-link
             v-if="report.simulation_id"
-            :to="`/simulations/${report.simulation_id}`"
+            :to="localePath(`/simulations/${report.simulation_id}`)"
             class="simulation-link"
           >
             <i class="pi pi-play-circle" />
@@ -226,8 +226,10 @@ import { ref, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useApi } from '@/composables/useApi'
 import { useAuthStore } from '@/stores/useAuthStore'
+import { useLocalePath } from '@/composables/useLocalePath'
 
 const { t } = useI18n()
+const { localePath } = useLocalePath()
 const api = useApi()
 const auth = useAuthStore()
 

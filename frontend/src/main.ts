@@ -1,6 +1,6 @@
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
-import { createRouter, createWebHistory } from 'vue-router'
+import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 import { createI18n } from 'vue-i18n'
 import PrimeVue from 'primevue/config'
 import Aura from '@primevue/themes/aura'
@@ -11,53 +11,53 @@ import { useAuthStore } from './stores/useAuthStore'
 import en from './locales/en.json'
 import pl from './locales/pl.json'
 
+// Supported locales: 'pl' (default, no prefix), 'en' (/en prefix)
+const SUPPORTED_LOCALES = ['pl', 'en'] as const
+const DEFAULT_LOCALE = 'pl'
+
+// Define page routes once, then generate with and without /en prefix
+const pageRoutes: RouteRecordRaw[] = [
+  { path: '', component: () => import('./views/DashboardView.vue') },
+  { path: 'login', component: () => import('./views/LoginView.vue') },
+  { path: 'map', component: () => import('./views/MapView.vue') },
+  { path: 'commodities', component: () => import('./views/CommodityDashboard.vue') },
+  { path: 'bottlenecks', component: () => import('./views/BottleneckMonitor.vue') },
+  { path: 'alerts', component: () => import('./views/AlertsView.vue') },
+  { path: 'simulations', component: () => import('./views/SimulationsView.vue') },
+  { path: 'reports', component: () => import('./views/ReportsView.vue') },
+  { path: 'settings', component: () => import('./views/SettingsView.vue') },
+]
+
 const router = createRouter({
   history: createWebHistory(),
   routes: [
+    // /en/* routes → English
     {
-      path: '/',
-      component: () => import('./views/DashboardView.vue'),
+      path: '/en',
+      children: pageRoutes.map(r => ({ ...r })),
     },
-    {
-      path: '/login',
-      component: () => import('./views/LoginView.vue'),
-    },
-    {
-      path: '/map',
-      component: () => import('./views/MapView.vue'),
-    },
-    {
-      path: '/commodities',
-      component: () => import('./views/CommodityDashboard.vue'),
-    },
-    {
-      path: '/bottlenecks',
-      component: () => import('./views/BottleneckMonitor.vue'),
-    },
-    {
-      path: '/alerts',
-      component: () => import('./views/AlertsView.vue'),
-    },
-    {
-      path: '/simulations',
-      component: () => import('./views/SimulationsView.vue'),
-    },
-    {
-      path: '/reports',
-      component: () => import('./views/ReportsView.vue'),
-    },
-    {
-      path: '/settings',
-      component: () => import('./views/SettingsView.vue'),
-    },
+    // /* routes → Polish (default, no prefix)
+    ...pageRoutes.map(r => ({
+      ...r,
+      path: r.path === '' ? '/' : `/${r.path}`,
+    })),
   ],
 })
 
 const i18n = createI18n({
   legacy: false,
-  locale: 'en',
-  fallbackLocale: 'en',
+  locale: DEFAULT_LOCALE,
+  fallbackLocale: DEFAULT_LOCALE,
   messages: { en, pl }
+})
+
+// Router guard: detect locale from URL prefix and set i18n locale
+router.beforeEach((to) => {
+  const locale = to.path.startsWith('/en') ? 'en' : 'pl'
+  const i18nGlobal = i18n.global as unknown as { locale: { value: string } }
+  if (i18nGlobal.locale.value !== locale) {
+    i18nGlobal.locale.value = locale
+  }
 })
 
 const app = createApp(App)

@@ -16,6 +16,11 @@ from api.v1.alerts import router as alerts_router
 from api.v1.bottlenecks import router as bottlenecks_router
 from api.v1.alert_subscriptions import router as alert_subscriptions_router
 from api.v1.billing import router as billing_router
+from api.v1.simulations import router as simulations_router
+from api.v1.reports import router as reports_router
+from api.v1.api_keys import router as api_keys_router
+from api.v1.search import router as search_router
+from api.v1.voyages import router as voyages_router
 from webhooks.stripe import router as stripe_webhook_router
 
 # ── Sentry ──
@@ -56,8 +61,12 @@ redis_client = aioredis.from_url(settings.REDIS_URL)
 
 @app.get("/health")
 async def health_check():
+    import json
+
     db_status = "ok"
     redis_status = "ok"
+    celery_status = "unknown"
+    celery_workers = 0
 
     try:
         async with engine.connect() as conn:
@@ -70,8 +79,27 @@ async def health_check():
     except Exception:
         redis_status = "error"
 
-    status = "ok" if db_status == "ok" and redis_status == "ok" else "degraded"
-    return {"status": status, "db": db_status, "redis": redis_status}
+    # Check Celery health from Redis heartbeat (written by celery_health_check task)
+    try:
+        health_data = await redis_client.get("celery:health")
+        if health_data:
+            parsed = json.loads(health_data)
+            celery_workers = parsed.get("worker_count", 0)
+            celery_status = "ok" if celery_workers > 0 else "no_workers"
+        else:
+            celery_status = "no_heartbeat"
+    except Exception:
+        celery_status = "error"
+
+    all_ok = db_status == "ok" and redis_status == "ok"
+    status = "ok" if all_ok else "degraded"
+    return {
+        "status": status,
+        "db": db_status,
+        "redis": redis_status,
+        "celery": celery_status,
+        "celery_workers": celery_workers,
+    }
 
 
 # ── API v1 routers ──
@@ -83,6 +111,11 @@ app.include_router(alerts_router, prefix="/api/v1")
 app.include_router(bottlenecks_router, prefix="/api/v1")
 app.include_router(alert_subscriptions_router, prefix="/api/v1")
 app.include_router(billing_router, prefix="/api/v1")
+app.include_router(simulations_router, prefix="/api/v1")
+app.include_router(reports_router, prefix="/api/v1")
+app.include_router(api_keys_router, prefix="/api/v1")
+app.include_router(search_router, prefix="/api/v1")
+app.include_router(voyages_router, prefix="/api/v1")
 
 # ── Webhooks (no /api/v1 prefix) ──
 app.include_router(stripe_webhook_router)

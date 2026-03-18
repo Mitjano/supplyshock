@@ -168,6 +168,20 @@
       </Transition>
     </section>
 
+    <!-- Live Progress Log -->
+    <section v-if="liveLog.length" class="live-log-section ss-card">
+      <div class="live-log-header">
+        <div class="live-dot" />
+        <h3>{{ t('simulations.liveProgress') }}</h3>
+      </div>
+      <div class="live-log-scroll" ref="logScrollRef">
+        <div v-for="(line, idx) in liveLog" :key="idx" class="log-line">
+          <span class="log-time">{{ String(idx + 1).padStart(2, '0') }}</span>
+          <span class="log-text">{{ line }}</span>
+        </div>
+      </div>
+    </section>
+
     <!-- Past Simulations -->
     <section class="history-section">
       <div class="section-header">
@@ -259,26 +273,43 @@
                   <div class="result-panel fade-in">
                     <h4>{{ t('simulations.resultsSummary') }}</h4>
                     <div class="result-grid">
-                      <div v-if="sim.result.impact_score != null" class="result-item">
-                        <span class="result-label">{{ t('simulations.impactScore') }}</span>
-                        <span class="result-value">{{ sim.result.impact_score }}/10</span>
+                      <div v-if="sim.result.risk_score != null" class="result-item">
+                        <span class="result-label">{{ t('simulations.riskScore') }}</span>
+                        <span class="result-value">{{ sim.result.risk_score }}/10</span>
                       </div>
-                      <div v-if="sim.result.recovery_days != null" class="result-item">
-                        <span class="result-label">{{ t('simulations.recoveryDays') }}</span>
-                        <span class="result-value">{{ sim.result.recovery_days }}d</span>
+                      <div v-if="sim.result.global_share_pct != null" class="result-item">
+                        <span class="result-label">{{ t('simulations.globalShare') }}</span>
+                        <span class="result-value">{{ sim.result.global_share_pct }}%</span>
                       </div>
-                      <div v-if="sim.result.affected_commodities" class="result-item">
-                        <span class="result-label">{{ t('simulations.affectedCommodities') }}</span>
-                        <span class="result-value">{{ sim.result.affected_commodities }}</span>
-                      </div>
-                      <div v-if="sim.result.price_change_pct != null" class="result-item">
-                        <span class="result-label">{{ t('simulations.priceChange') }}</span>
-                        <span :class="['result-value', sim.result.price_change_pct > 0 ? 'text-danger' : 'text-success']">
-                          {{ sim.result.price_change_pct > 0 ? '+' : '' }}{{ sim.result.price_change_pct }}%
+                      <div v-for="(pred, commodity) in (sim.result.predictions || {})" :key="commodity" class="result-item">
+                        <span class="result-label">{{ formatCommodity(commodity as string) }}</span>
+                        <span :class="['result-value', pred.peak_change_pct > 0 ? 'text-danger' : 'text-success']">
+                          {{ pred.peak_change_pct > 0 ? '+' : '' }}{{ pred.peak_change_pct }}%
                         </span>
                       </div>
                     </div>
                     <p v-if="sim.result.summary" class="result-summary">{{ sim.result.summary }}</p>
+
+                    <!-- OASIS multi-agent details -->
+                    <div v-if="sim.result.simulation_type === 'multi_agent'" class="oasis-details">
+                      <span class="oasis-badge">Multi-Agent OASIS</span>
+                      <span class="oasis-meta">{{ sim.result.agent_count }} agents · {{ sim.result.steps }} rounds · {{ sim.result.elapsed_seconds }}s</span>
+                      <div v-if="sim.result.agent_summary" class="oasis-summary">
+                        <div v-if="sim.result.agent_summary.trade_distribution?.length" class="oasis-trades">
+                          <span class="result-label">{{ t('simulations.tradeActions') }}</span>
+                          <span v-for="t in sim.result.agent_summary.trade_distribution" :key="t.action" class="trade-chip">
+                            {{ t.action }}: {{ t.count }}
+                          </span>
+                        </div>
+                        <div v-if="sim.result.agent_summary.reroute_patterns?.length" class="oasis-reroutes">
+                          <span class="result-label">{{ t('simulations.vesselReroutes') }}</span>
+                          <span v-for="r in sim.result.agent_summary.reroute_patterns" :key="r.port" class="trade-chip">
+                            → {{ r.port }}: {{ r.count }}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                    <span v-else-if="sim.result.simulation_type === 'deterministic'" class="deterministic-badge">Deterministic Model</span>
                   </div>
                 </td>
               </tr>
@@ -334,16 +365,25 @@
           <div v-if="expandedId === sim.id && sim.status === 'completed' && sim.result" class="result-panel fade-in">
             <h4>{{ t('simulations.resultsSummary') }}</h4>
             <div class="result-grid">
-              <div v-if="sim.result.impact_score != null" class="result-item">
-                <span class="result-label">{{ t('simulations.impactScore') }}</span>
-                <span class="result-value">{{ sim.result.impact_score }}/10</span>
+              <div v-if="sim.result.risk_score != null" class="result-item">
+                <span class="result-label">{{ t('simulations.riskScore') }}</span>
+                <span class="result-value">{{ sim.result.risk_score }}/10</span>
               </div>
-              <div v-if="sim.result.recovery_days != null" class="result-item">
-                <span class="result-label">{{ t('simulations.recoveryDays') }}</span>
-                <span class="result-value">{{ sim.result.recovery_days }}d</span>
+              <div v-for="(pred, commodity) in (sim.result.predictions || {})" :key="commodity" class="result-item">
+                <span class="result-label">{{ formatCommodity(commodity as string) }}</span>
+                <span :class="['result-value', pred.peak_change_pct > 0 ? 'text-danger' : 'text-success']">
+                  {{ pred.peak_change_pct > 0 ? '+' : '' }}{{ pred.peak_change_pct }}%
+                </span>
               </div>
             </div>
             <p v-if="sim.result.summary" class="result-summary">{{ sim.result.summary }}</p>
+
+            <!-- OASIS multi-agent details (mobile) -->
+            <div v-if="sim.result.simulation_type === 'multi_agent'" class="oasis-details">
+              <span class="oasis-badge">Multi-Agent OASIS</span>
+              <span class="oasis-meta">{{ sim.result.agent_count }} agents · {{ sim.result.steps }} rounds</span>
+            </div>
+            <span v-else-if="sim.result.simulation_type === 'deterministic'" class="deterministic-badge">Deterministic</span>
           </div>
           <div v-if="expandedId === sim.id && sim.status === 'failed'" class="result-panel error-panel fade-in">
             <i class="pi pi-exclamation-triangle" />
@@ -382,12 +422,22 @@ interface BottleneckNode {
   type: string
 }
 
+interface PredictionEntry {
+  benchmark: string
+  baseline_price: number
+  weekly_prices: number[]
+  peak_price: number
+  peak_change_pct: number
+  recovery_week: number
+}
+
 interface SimulationResult {
-  impact_score?: number
-  recovery_days?: number
-  affected_commodities?: string
-  price_change_pct?: number
+  risk_score?: number
+  global_share_pct?: number
+  predictions?: Record<string, PredictionEntry>
   summary?: string
+  node_name?: string
+  event_type?: string
   [key: string]: unknown
 }
 
@@ -433,6 +483,9 @@ const toast = reactive({
   message: '',
 })
 
+const liveLog = ref<string[]>([])
+const activeSSE = ref<EventSource | null>(null)
+
 let toastTimer: ReturnType<typeof setTimeout> | null = null
 let pollInterval: ReturnType<typeof setInterval> | null = null
 
@@ -465,6 +518,56 @@ function formatNodeName(slug: string): string {
 
 function formatEventType(type: string): string {
   return type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+}
+
+function formatCommodity(commodity: string): string {
+  return commodity.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+}
+
+function connectSSE(simulationId: string) {
+  if (activeSSE.value) {
+    activeSSE.value.close()
+  }
+  liveLog.value = []
+
+  const baseUrl = import.meta.env.VITE_API_URL || ''
+  const token = auth.token
+  const url = `${baseUrl}/api/v1/simulations/${simulationId}/stream${token ? `?token=${encodeURIComponent(token)}` : ''}`
+
+  const eventSource = new EventSource(url)
+  activeSSE.value = eventSource
+
+  eventSource.onmessage = (event) => {
+    try {
+      const data = JSON.parse(event.data)
+
+      // Update simulation in list
+      const sim = simulations.value.find(s => s.id === simulationId)
+      if (sim) {
+        if (data.progress != null) sim.progress = data.progress
+        if (data.log) liveLog.value.push(data.log)
+        if (data.status === 'completed') {
+          sim.status = 'completed'
+          eventSource.close()
+          activeSSE.value = null
+          fetchSimulations() // reload to get full result
+        }
+        if (data.status === 'failed') {
+          sim.status = 'failed'
+          sim.error_message = data.error || 'Unknown error'
+          eventSource.close()
+          activeSSE.value = null
+        }
+      }
+    } catch {
+      // Ignore parse errors (keepalive comments)
+    }
+  }
+
+  eventSource.onerror = () => {
+    eventSource.close()
+    activeSSE.value = null
+  }
 }
 
 function formatDate(dateStr: string): string {
@@ -526,8 +629,7 @@ async function handleSubmit() {
       agents_count: form.agentsCount,
     }
 
-    // POST /api/v1/simulations — the endpoint may not exist yet
-    await api.post('/simulations', payload)
+    const res = await api.post<{ id: string }>('/simulations', payload)
     showToast('success', t('simulations.submitted'))
 
     // Reset form
@@ -540,10 +642,13 @@ async function handleSubmit() {
     form.horizonDays = 90
     submitted.value = false
 
-    // Refresh list
+    // Refresh list and connect SSE for live progress
     await fetchSimulations()
+    if (res.id) {
+      connectSSE(res.id)
+    }
   } catch {
-    showToast('success', t('simulations.submittedDemo'))
+    showToast('error', t('simulations.submitFailed'))
   } finally {
     submitting.value = false
   }
@@ -551,7 +656,7 @@ async function handleSubmit() {
 
 async function deleteSimulation(id: string) {
   try {
-    await api.post(`/simulations/${id}/delete`)
+    await api.del(`/simulations/${id}`)
     simulations.value = simulations.value.filter(s => s.id !== id)
     if (expandedId.value === id) expandedId.value = null
     showToast('success', t('simulations.deleted'))
@@ -584,6 +689,7 @@ onMounted(async () => {
 onUnmounted(() => {
   if (pollInterval) clearInterval(pollInterval)
   if (toastTimer) clearTimeout(toastTimer)
+  if (activeSSE.value) activeSSE.value.close()
 })
 </script>
 
@@ -893,6 +999,64 @@ onUnmounted(() => {
   cursor: not-allowed;
 }
 
+/* ========== Live Log ========== */
+.live-log-section {
+  margin-bottom: 1.5rem;
+  border-color: rgba(59, 130, 246, 0.3);
+}
+
+.live-log-header {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 0.75rem;
+}
+
+.live-log-header h3 {
+  font-size: 0.9rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.live-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #3b82f6;
+  animation: pulse-dot 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(0.8); }
+}
+
+.live-log-scroll {
+  max-height: 200px;
+  overflow-y: auto;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 0.78rem;
+  line-height: 1.7;
+  background: var(--ss-bg-base);
+  border-radius: var(--ss-radius);
+  padding: 0.75rem 1rem;
+}
+
+.log-line {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.log-time {
+  color: var(--ss-text-muted);
+  flex-shrink: 0;
+  opacity: 0.5;
+}
+
+.log-text {
+  color: var(--ss-accent-light, #5eead4);
+}
+
 /* ========== History Section ========== */
 .history-section {
   margin-top: 0.5rem;
@@ -1189,6 +1353,66 @@ onUnmounted(() => {
   font-size: 0.85rem;
   line-height: 1.6;
   margin: 0;
+}
+
+/* OASIS multi-agent result details */
+.oasis-details {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--ss-border, rgba(255,255,255,0.06));
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.oasis-badge {
+  background: linear-gradient(135deg, #8b5cf6, #6366f1);
+  color: white;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.deterministic-badge {
+  background: rgba(100, 116, 139, 0.15);
+  color: var(--ss-text-secondary);
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 500;
+}
+
+.oasis-meta {
+  color: var(--ss-text-secondary);
+  font-size: 0.78rem;
+}
+
+.oasis-summary {
+  width: 100%;
+  margin-top: 0.5rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.oasis-trades, .oasis-reroutes {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.trade-chip {
+  background: rgba(139, 92, 246, 0.1);
+  color: var(--ss-text-primary);
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 0.75rem;
+  font-family: 'JetBrains Mono', monospace;
 }
 
 .error-panel {

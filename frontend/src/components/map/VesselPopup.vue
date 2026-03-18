@@ -14,10 +14,35 @@
         </div>
       </div>
 
+      <!-- Laden/Ballast badge -->
+      <div v-if="voyage" class="voyage-badges">
+        <span class="laden-badge" :class="voyage.laden_status || 'unknown'">
+          {{ voyage.laden_status === 'laden' ? t('map.laden') : voyage.laden_status === 'ballast' ? t('map.ballast') : t('map.unknown') }}
+        </span>
+        <span v-if="voyage.cargo_type" class="cargo-badge">
+          {{ formatCommodity(voyage.cargo_type) }}
+        </span>
+      </div>
+
+      <!-- Current voyage info -->
+      <div v-if="voyage" class="voyage-info">
+        <div class="voyage-route">
+          <span v-if="voyage.origin">{{ voyage.origin.name }}</span>
+          <span v-else>?</span>
+          <span class="arrow">&rarr;</span>
+          <span v-if="voyage.destination">{{ voyage.destination.name }}</span>
+          <span v-else>{{ t('map.enRoute') }}</span>
+        </div>
+        <div v-if="voyage.volume_estimate" class="voyage-volume">
+          {{ formatVolume(voyage.volume_estimate) }} MT
+        </div>
+      </div>
+
       <!-- Details table -->
       <table class="details">
         <tr><td>MMSI</td><td>{{ vessel.mmsi }}</td></tr>
         <tr v-if="vessel.imo"><td>IMO</td><td>{{ vessel.imo }}</td></tr>
+        <tr v-if="vessel.callsign"><td>{{ t('map.callsign') }}</td><td>{{ vessel.callsign }}</td></tr>
         <tr>
           <td>{{ t('map.position') }}</td>
           <td>{{ vessel.latitude.toFixed(4) }}, {{ vessel.longitude.toFixed(4) }}</td>
@@ -41,6 +66,14 @@
         <tr v-if="vessel.draught">
           <td>{{ t('map.draught') }}</td>
           <td>{{ vessel.draught }}m</td>
+        </tr>
+        <tr v-if="vessel.dwt_estimate">
+          <td>DWT</td>
+          <td>{{ formatVolume(vessel.dwt_estimate) }} MT</td>
+        </tr>
+        <tr v-if="vessel.length_m">
+          <td>{{ t('map.dimensions') }}</td>
+          <td>{{ vessel.length_m }}m &times; {{ vessel.beam_m }}m</td>
         </tr>
       </table>
 
@@ -88,6 +121,10 @@ defineEmits<{
 }>()
 
 const vessel = computed(() => mapStore.selectedVessel!)
+const voyage = computed(() => mapStore.selectedVesselVoyage)
+
+function formatCommodity(c: string) { return c.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) }
+function formatVolume(v: number) { return v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v.toFixed(0) }
 
 const COLORS: Record<string, string> = {
   tanker: '#ef4444',
@@ -201,6 +238,61 @@ h3 {
   font-size: 0.8rem;
   text-transform: uppercase;
   letter-spacing: 0.03em;
+}
+
+/* Voyage badges */
+.voyage-badges {
+  display: flex;
+  gap: 0.4rem;
+  margin-bottom: 0.75rem;
+}
+
+.laden-badge {
+  font-size: 0.7rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.laden-badge.laden { background: #065f46; color: #6ee7b7; }
+.laden-badge.ballast { background: #1e3a5f; color: #93c5fd; }
+.laden-badge.unknown { background: #374151; color: #9ca3af; }
+
+.cargo-badge {
+  font-size: 0.7rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  background: #374151;
+  color: #d1d5db;
+  font-weight: 500;
+}
+
+/* Voyage route info */
+.voyage-info {
+  background: rgba(30, 41, 59, 0.6);
+  border: 1px solid #334155;
+  border-radius: 8px;
+  padding: 0.6rem 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.voyage-route {
+  color: #e2e8f0;
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.voyage-route .arrow {
+  color: #64748b;
+  margin: 0 0.3rem;
+}
+
+.voyage-volume {
+  color: #94a3b8;
+  font-size: 0.75rem;
+  margin-top: 0.2rem;
 }
 
 .time {

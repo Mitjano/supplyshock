@@ -13,7 +13,7 @@
       :class="{ open: mobileOpen }"
     >
       <!-- Brand -->
-      <div class="sidebar-brand" @click="router.push('/')">
+      <div class="sidebar-brand" @click="router.push(localePath('/'))">
         <i class="pi pi-bolt brand-icon" />
         <transition name="fade-text">
           <span v-if="!collapsed" class="brand-name">SupplyShock</span>
@@ -53,7 +53,7 @@
       <!-- Bottom actions -->
       <div class="sidebar-bottom">
         <router-link
-          to="/settings"
+          :to="localePath('/settings')"
           class="nav-item"
           :class="{ active: isActive('/settings') }"
           @click="mobileOpen = false"
@@ -106,16 +106,13 @@
         </div>
 
         <div class="topbar-right">
-          <span class="topbar-search">
+          <button class="topbar-search" @click="globalSearchRef?.open()">
             <i class="pi pi-search" />
-            <InputText
-              v-model="searchQuery"
-              :placeholder="t('common.search')"
-              class="search-input"
-            />
-          </span>
+            <span class="search-placeholder">{{ t('common.search') }}</span>
+            <kbd class="search-shortcut">{{ isMac ? '⌘K' : 'Ctrl+K' }}</kbd>
+          </button>
 
-          <button class="topbar-icon-btn" @click="router.push('/alerts')">
+          <button class="topbar-icon-btn" @click="router.push(localePath('/alerts'))">
             <i class="pi pi-bell" />
             <span v-if="alertCount > 0" class="topbar-badge">{{ alertCount }}</span>
           </button>
@@ -136,7 +133,7 @@
               <span class="text-muted">{{ auth.plan }} plan</span>
             </div>
             <div class="dropdown-divider" />
-            <button class="dropdown-item" @click="router.push('/settings'); showUserMenu = false">
+            <button class="dropdown-item" @click="router.push(localePath('/settings')); showUserMenu = false">
               <i class="pi pi-cog" /> {{ t('nav.settings') }}
             </button>
             <button class="dropdown-item dropdown-item--danger" @click="auth.signOut()">
@@ -151,6 +148,9 @@
         <slot />
       </main>
     </div>
+
+    <!-- Global search modal -->
+    <GlobalSearch ref="globalSearchRef" />
   </div>
 </template>
 
@@ -159,23 +159,34 @@ import { ref, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '@/stores/useAuthStore'
+import { useLocalePath } from '@/composables/useLocalePath'
+import GlobalSearch from '@/components/ui/GlobalSearch.vue'
 import Avatar from 'primevue/avatar'
-import InputText from 'primevue/inputtext'
 
 const { t } = useI18n()
 const router = useRouter()
 const route = useRoute()
 const auth = useAuthStore()
+const { localePath } = useLocalePath()
 
 const collapsed = ref(false)
 const mobileOpen = ref(false)
-const searchQuery = ref('')
 const showUserMenu = ref(false)
 const alertCount = ref(3) // TODO: fetch from API
+const globalSearchRef = ref<InstanceType<typeof GlobalSearch> | null>(null)
+const isMac = navigator.platform.toUpperCase().includes('MAC')
 
 const userInitials = computed(() => {
   const name = auth.user?.name || auth.user?.email || '?'
   return name.substring(0, 2).toUpperCase()
+})
+
+/** Strip locale prefix from route.path for matching */
+const cleanPath = computed(() => {
+  const p = route.path
+  if (p.startsWith('/en/')) return p.slice(3)
+  if (p === '/en') return '/'
+  return p
 })
 
 const currentPageTitle = computed(() => {
@@ -189,43 +200,43 @@ const currentPageTitle = computed(() => {
     '/reports': t('nav.reports'),
     '/settings': t('nav.settings'),
   }
-  return map[route.path] || 'Page'
+  return map[cleanPath.value] || 'Page'
 })
 
 function isActive(path: string): boolean {
-  if (path === '/') return route.path === '/'
-  return route.path.startsWith(path)
+  if (path === '/') return cleanPath.value === '/'
+  return cleanPath.value.startsWith(path)
 }
 
-const navSections = [
+const navSections = computed(() => [
   {
     titleKey: 'layout.overview',
     items: [
-      { key: 'home', icon: 'pi-home', route: '/', label: () => t('nav.home') },
-      { key: 'map', icon: 'pi-map', route: '/map', label: () => t('nav.map') },
+      { key: 'home', icon: 'pi-home', route: localePath('/'), label: () => t('nav.home') },
+      { key: 'map', icon: 'pi-map', route: localePath('/map'), label: () => t('nav.map') },
     ]
   },
   {
     titleKey: 'layout.markets',
     items: [
-      { key: 'commodities', icon: 'pi-chart-line', route: '/commodities', label: () => t('nav.commodities') },
+      { key: 'commodities', icon: 'pi-chart-line', route: localePath('/commodities'), label: () => t('nav.commodities') },
     ]
   },
   {
     titleKey: 'layout.intelligence',
     items: [
-      { key: 'alerts', icon: 'pi-bell', route: '/alerts', label: () => t('nav.alerts'), badge: alertCount },
-      { key: 'bottlenecks', icon: 'pi-exclamation-triangle', route: '/bottlenecks', label: () => t('nav.bottlenecks') },
+      { key: 'alerts', icon: 'pi-bell', route: localePath('/alerts'), label: () => t('nav.alerts'), badge: alertCount },
+      { key: 'bottlenecks', icon: 'pi-exclamation-triangle', route: localePath('/bottlenecks'), label: () => t('nav.bottlenecks') },
     ]
   },
   {
     titleKey: 'layout.tools',
     items: [
-      { key: 'simulations', icon: 'pi-play', route: '/simulations', label: () => t('nav.simulations') },
-      { key: 'reports', icon: 'pi-file', route: '/reports', label: () => t('nav.reports') },
+      { key: 'simulations', icon: 'pi-play', route: localePath('/simulations'), label: () => t('nav.simulations') },
+      { key: 'reports', icon: 'pi-file', route: localePath('/reports'), label: () => t('nav.reports') },
     ]
   }
-]
+])
 </script>
 
 <style scoped>
@@ -497,25 +508,32 @@ const navSections = [
   border: 1px solid var(--ss-border-light);
   border-radius: var(--ss-radius);
   padding: 0.35rem 0.75rem;
+  cursor: pointer;
+  transition: border-color var(--ss-transition-fast);
+  font-size: 0.85rem;
+  color: var(--ss-text-muted);
+  min-width: 200px;
+}
+
+.topbar-search:hover {
+  border-color: var(--ss-accent);
 }
 
 .topbar-search i {
-  color: var(--ss-text-muted);
   font-size: 0.85rem;
 }
 
-.search-input {
-  background: transparent !important;
-  border: none !important;
-  color: var(--ss-text-primary) !important;
-  font-size: 0.85rem !important;
-  padding: 0 !important;
-  width: 180px;
-  box-shadow: none !important;
+.search-placeholder {
+  flex: 1;
 }
 
-.search-input::placeholder {
-  color: var(--ss-text-muted);
+.search-shortcut {
+  background: var(--ss-bg-elevated);
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+  font-size: 0.65rem;
+  border: 1px solid var(--ss-border-light);
+  font-family: inherit;
 }
 
 .topbar-icon-btn {

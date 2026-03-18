@@ -66,6 +66,40 @@
         </template>
       </div>
 
+      <!-- Voyages tab -->
+      <div v-if="activeTab === 'voyages'" class="tab-content">
+        <div v-if="voyagesLoading" class="loading-state">
+          <div class="mini-spinner"></div>
+          <span>{{ t('map.loadingVoyages') }}</span>
+        </div>
+        <div v-else-if="voyagesError" class="error-state">
+          <i class="pi pi-exclamation-circle"></i>
+          <span>{{ t('map.errorVoyages') }}</span>
+          <button class="retry-btn" @click="loadVoyages">{{ t('common.retry') }}</button>
+        </div>
+        <template v-else>
+          <div v-for="voyage in voyageList" :key="voyage.id" class="item-card">
+            <div class="item-header">
+              <span class="item-name">{{ voyage.vessel_name || 'MMSI ' + voyage.mmsi }}</span>
+              <span class="laden-badge" :class="voyage.laden_status || 'unknown'">
+                {{ voyage.laden_status === 'laden' ? t('map.laden') : voyage.laden_status === 'ballast' ? t('map.ballast') : t('map.unknown') }}
+              </span>
+            </div>
+            <div class="voyage-route-row">
+              <span>{{ voyage.origin?.name || '?' }}</span>
+              <span class="arrow">&rarr;</span>
+              <span>{{ voyage.destination?.name || t('map.enRoute') }}</span>
+            </div>
+            <div class="item-meta">
+              {{ formatVesselType(voyage.vessel_type) }}
+              <span v-if="voyage.cargo_type" class="cargo-tag">{{ formatCommodity(voyage.cargo_type) }}</span>
+              <span v-if="voyage.volume_estimate" class="volume-tag">{{ formatVolume(voyage.volume_estimate) }} MT</span>
+            </div>
+          </div>
+          <div v-if="!voyageList.length" class="empty-state">{{ t('map.noVoyages') }}</div>
+        </template>
+      </div>
+
       <!-- Flows tab -->
       <div v-if="activeTab === 'flows'" class="tab-content">
         <table class="flows-table">
@@ -108,10 +142,14 @@ const chokepointsError = ref(false)
 const alertsLoading = ref(false)
 const alertsError = ref(false)
 
+const voyagesLoading = ref(false)
+const voyagesError = ref(false)
+
 const tabs = computed(() => [
   { id: 'chokepoints', label: t('map.chokepoints') },
   { id: 'alerts', label: t('map.alerts') },
   { id: 'flows', label: t('map.flows') },
+  { id: 'voyages', label: t('map.voyages') },
 ])
 
 // Real data from store
@@ -137,6 +175,11 @@ const COMMODITY_COLORS: Record<string, string> = {
 
 function commodityColor(c: string) { return COMMODITY_COLORS[c] || '#6b7280' }
 function formatCommodity(c: string) { return c.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) }
+function formatVesselType(t: string) { return t.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) }
+
+const voyageList = computed(() => {
+  return mapStore.underwayVoyages.slice(0, 20)
+})
 function formatVolume(v: number | null) { return v ? `${(v / 1000).toFixed(0)}k MT` : '\u2014' }
 function riskClass(risk: number) { return risk >= 8 ? 'high' : risk >= 5 ? 'medium' : 'low' }
 
@@ -182,6 +225,21 @@ function switchTab(id: string) {
   }
   if (id === 'alerts' && !alerts.value.length && !alertsLoading.value) {
     loadAlerts()
+  }
+  if (id === 'voyages' && !mapStore.voyages.length && !voyagesLoading.value) {
+    loadVoyages()
+  }
+}
+
+async function loadVoyages() {
+  voyagesLoading.value = true
+  voyagesError.value = false
+  try {
+    await mapStore.fetchVoyages({ status: 'underway' })
+  } catch {
+    voyagesError.value = true
+  } finally {
+    voyagesLoading.value = false
   }
 }
 
@@ -390,6 +448,46 @@ onMounted(() => {
 
 .flows-table tr:hover td {
   background: rgba(30, 41, 59, 0.4);
+}
+
+/* Voyage tab styles */
+.voyage-route-row {
+  color: #e2e8f0;
+  font-size: 0.82rem;
+  font-weight: 500;
+  margin-top: 0.2rem;
+}
+
+.voyage-route-row .arrow {
+  color: #64748b;
+  margin: 0 0.25rem;
+}
+
+.laden-badge {
+  font-size: 0.65rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 3px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.laden-badge.laden { background: #065f46; color: #6ee7b7; }
+.laden-badge.ballast { background: #1e3a5f; color: #93c5fd; }
+.laden-badge.unknown { background: #374151; color: #9ca3af; }
+
+.cargo-tag {
+  background: #374151;
+  color: #d1d5db;
+  padding: 0.05rem 0.35rem;
+  border-radius: 3px;
+  font-size: 0.7rem;
+  margin-left: 0.4rem;
+}
+
+.volume-tag {
+  color: #94a3b8;
+  margin-left: 0.4rem;
 }
 
 .commodity-dot {

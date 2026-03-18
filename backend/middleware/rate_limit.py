@@ -9,7 +9,7 @@ Usage:
         ...
 """
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from fastapi import Depends, HTTPException, Request, Response
@@ -75,7 +75,7 @@ async def check_api_rate_limit(
         # Calculate seconds until midnight UTC
         now = datetime.now(timezone.utc)
         midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        midnight_next = midnight.replace(day=midnight.day + 1) if midnight < now else midnight
+        midnight_next = midnight + timedelta(days=1)
         retry_after = int((midnight_next - now).total_seconds())
 
         raise HTTPException(

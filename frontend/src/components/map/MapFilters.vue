@@ -1,26 +1,28 @@
 <template>
   <div class="map-filters">
     <select v-model="mapStore.vesselTypeFilter" class="filter-select">
-      <option :value="null">All vessels</option>
-      <option value="tanker">Tankers</option>
-      <option value="bulk_carrier">Bulk carriers</option>
-      <option value="container">Containers</option>
-      <option value="lng_carrier">LNG carriers</option>
+      <option :value="null">{{ t('map.allVessels') }}</option>
+      <option value="tanker">{{ t('map.tankers') }}</option>
+      <option value="bulk_carrier">{{ t('map.bulkCarriers') }}</option>
+      <option value="container">{{ t('map.containers') }}</option>
+      <option value="lng_carrier">{{ t('map.lngCarriers') }}</option>
     </select>
     <select v-model="mapStore.commodityFilter" class="filter-select" @change="onCommodityChange">
-      <option :value="null">All commodities</option>
-      <option value="crude_oil">Crude Oil</option>
-      <option value="coal">Coal</option>
-      <option value="iron_ore">Iron Ore</option>
-      <option value="copper">Copper</option>
-      <option value="lng">LNG</option>
+      <option :value="null">{{ t('map.allCommodities') }}</option>
+      <option value="crude_oil">{{ t('map.crudeOil') }}</option>
+      <option value="coal">{{ t('map.coal') }}</option>
+      <option value="iron_ore">{{ t('map.ironOre') }}</option>
+      <option value="copper">{{ t('map.copper') }}</option>
+      <option value="lng">{{ t('map.lng') }}</option>
     </select>
   </div>
 </template>
 
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { useMapStore } from '../../stores/useMapStore'
 
+const { t } = useI18n()
 const mapStore = useMapStore()
 
 function onCommodityChange() {

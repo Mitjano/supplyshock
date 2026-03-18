@@ -15,10 +15,18 @@ from config import settings
 
 
 def _extract_bearer_token(request: Request) -> str | None:
-    """Extract Bearer token from Authorization header."""
+    """Extract Bearer token from Authorization header or query param.
+
+    Checks Authorization header first, then falls back to ?token= query
+    parameter (needed for EventSource/SSE which can't set custom headers).
+    """
     auth_header = request.headers.get("Authorization", "")
     if auth_header.startswith("Bearer "):
         return auth_header[7:]
+    # Fallback: query param for SSE endpoints (EventSource can't set headers)
+    token = request.query_params.get("token")
+    if token:
+        return token
     return None
 
 

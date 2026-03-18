@@ -103,6 +103,16 @@ async def _reset_failure_count(db: AsyncSession, stripe_customer_id: str):
     await db.commit()
 
 
+async def _get_user_by_customer(db: AsyncSession, stripe_customer_id: str) -> dict | None:
+    """Get user name and email by Stripe customer ID."""
+    result = await db.execute(
+        text("SELECT name, email, plan FROM users WHERE stripe_customer_id = :cid"),
+        {"cid": stripe_customer_id},
+    )
+    row = result.mappings().first()
+    return dict(row) if row else None
+
+
 @router.post("/stripe")
 async def stripe_webhook(
     request: Request,
@@ -167,6 +177,17 @@ async def stripe_webhook(
 
             logger.info("Plan upgraded to %s for customer %s", plan, customer_id)
 
+            # Send welcome email
+            if customer_id:
+                user_info = await _get_user_by_customer(db, customer_id)
+                if user_info and user_info.get("email"):
+                    from emails.resend import send_email
+                    await send_email("welcome_pro", user_info["email"], {
+                        "name": user_info.get("name") or "there",
+                        "plan_name": plan.title(),
+                        "app_url": settings.FRONTEND_URL,
+                    })
+
         elif event_type == "invoice.payment_failed":
             customer_id = data.get("customer")
             if customer_id:
@@ -175,18 +196,48 @@ async def stripe_webhook(
                     "Payment failed for %s (attempt %d)", customer_id, count
                 )
 
+                user_info = await _get_user_by_customer(db, customer_id)
+
                 if count >= 3:
                     await _update_user_plan(db, customer_id, "free")
                     logger.warning("Downgraded %s to free after 3 failures", customer_id)
 
-                # TODO: Send warning email via Resend
+                    # Send downgrade email
+                    if user_info and user_info.get("email"):
+                        from emails.resend import send_email
+                        await send_email("plan_downgraded", user_info["email"], {
+                            "name": user_info.get("name") or "there",
+                            "reason": "payment_failed",
+                            "previous_plan": user_info.get("plan", "pro"),
+                            "app_url": settings.FRONTEND_URL,
+                        })
+                else:
+                    # Send payment failed warning
+                    if user_info and user_info.get("email"):
+                        from emails.resend import send_email
+                        await send_email("payment_failed", user_info["email"], {
+                            "name": user_info.get("name") or "there",
+                            "attempt": count,
+                            "app_url": settings.FRONTEND_URL,
+                        })
 
         elif event_type == "customer.subscription.deleted":
             customer_id = data.get("customer")
             if customer_id:
+                user_info = await _get_user_by_customer(db, customer_id)
                 await _update_user_plan(db, customer_id, "free")
                 await _reset_failure_count(db, customer_id)
                 logger.info("Subscription deleted, downgraded %s to free", customer_id)
+
+                # Send downgrade email
+                if user_info and user_info.get("email"):
+                    from emails.resend import send_email
+                    await send_email("plan_downgraded", user_info["email"], {
+                        "name": user_info.get("name") or "there",
+                        "reason": "subscription_cancelled",
+                        "previous_plan": user_info.get("plan", "pro"),
+                        "app_url": settings.FRONTEND_URL,
+                    })
 
         elif event_type == "invoice.paid":
             customer_id = data.get("customer")

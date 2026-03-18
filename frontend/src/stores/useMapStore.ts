@@ -39,7 +39,26 @@ interface TradeFlow {
     destination: string
     volume_mt: number | null
     value_usd: number | null
+    source?: string
   }
+}
+
+interface Voyage {
+  id: string
+  mmsi: number
+  imo: number | null
+  vessel_name: string | null
+  vessel_type: string
+  origin: { port_id: string; name: string; country_code: string } | null
+  destination: { port_id: string; name: string; country_code: string } | null
+  departure_time: string | null
+  arrival_time: string | null
+  status: string
+  laden_status: string | null
+  cargo_type: string | null
+  volume_estimate: number | null
+  distance_nm: number | null
+  created_at: string
 }
 
 interface Bottleneck {
@@ -76,11 +95,15 @@ export const useMapStore = defineStore('map', () => {
   const tradeFlows = ref<TradeFlow[]>([])
   const bottlenecks = ref<Bottleneck[]>([])
   const alerts = ref<Alert[]>([])
+  const voyages = ref<Voyage[]>([])
   const loading = ref(false)
   const error = ref<string | null>(null)
   const selectedVessel = ref<VesselPosition | null>(null)
+  const selectedVesselVoyage = ref<Voyage | null>(null)
   const vesselTypeFilter = ref<string | null>(null)
   const commodityFilter = ref<string | null>(null)
+  const voyageStatusFilter = ref<string | null>(null)
+  const ladenFilter = ref<string | null>(null)
   const lastUpdated = ref<Date | null>(null)
   const vesselTrail = ref<TrailPoint[]>([])
   const trailLoading = ref(false)
@@ -205,6 +228,27 @@ export const useMapStore = defineStore('map', () => {
     }
   }
 
+  async function fetchVoyages(params?: { status?: string; cargo_type?: string; laden_status?: string }) {
+    const headers = await getHeaders()
+    const searchParams = new URLSearchParams({ limit: '50' })
+    if (params?.status || voyageStatusFilter.value) {
+      searchParams.set('status', params?.status || voyageStatusFilter.value!)
+    }
+    if (params?.cargo_type || commodityFilter.value) {
+      searchParams.set('cargo_type', params?.cargo_type || commodityFilter.value!)
+    }
+
+    try {
+      const res = await fetch(`${apiBase}/api/v1/voyages?${searchParams}`, { headers })
+      if (res.ok) {
+        const body = await res.json()
+        voyages.value = body.data
+      }
+    } catch (e) {
+      console.error('Failed to fetch voyages:', e)
+    }
+  }
+
   async function selectVessel(mmsi: number) {
     const headers = await getHeaders()
     try {
@@ -213,6 +257,14 @@ export const useMapStore = defineStore('map', () => {
         const body = await res.json()
         selectedVessel.value = body.data
       }
+      // Fetch current voyage for this vessel
+      const voyageRes = await fetch(
+        `${apiBase}/api/v1/voyages?mmsi=${mmsi}&status=underway&limit=1`, { headers }
+      )
+      if (voyageRes.ok) {
+        const voyageBody = await voyageRes.json()
+        selectedVesselVoyage.value = voyageBody.data?.[0] || null
+      }
     } catch (e) {
       console.error('Failed to fetch vessel detail:', e)
     }
@@ -220,8 +272,17 @@ export const useMapStore = defineStore('map', () => {
 
   function clearSelection() {
     selectedVessel.value = null
+    selectedVesselVoyage.value = null
     vesselTrail.value = []
   }
+
+  const floatingStorageVessels = computed(() => {
+    return voyages.value.filter(v => v.status === 'floating_storage')
+  })
+
+  const underwayVoyages = computed(() => {
+    return voyages.value.filter(v => v.status === 'underway')
+  })
 
   return {
     vessels,
@@ -229,20 +290,27 @@ export const useMapStore = defineStore('map', () => {
     tradeFlows,
     bottlenecks,
     alerts,
+    voyages,
     loading,
     error,
     selectedVessel,
+    selectedVesselVoyage,
     vesselTypeFilter,
     commodityFilter,
+    voyageStatusFilter,
+    ladenFilter,
     lastUpdated,
     vesselTrail,
     trailLoading,
     filteredVessels,
+    floatingStorageVessels,
+    underwayVoyages,
     fetchVessels,
     fetchPorts,
     fetchTradeFlows,
     fetchBottlenecks,
     fetchAlerts,
+    fetchVoyages,
     fetchVesselTrail,
     selectVessel,
     clearSelection,

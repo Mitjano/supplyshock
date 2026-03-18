@@ -118,6 +118,9 @@ async def get_price_history(
 @router.get("/flows")
 async def get_trade_flows(
     commodity: str | None = Query(None),
+    source: str | None = Query(None, description="Filter by source: 'un_comtrade', 'live', or None for all"),
+    origin_country: str | None = Query(None, description="ISO 3166-1 alpha-2 origin country"),
+    dest_country: str | None = Query(None, description="ISO 3166-1 alpha-2 destination country"),
     limit: int = Query(20, le=100),
     user: dict[str, Any] = Depends(check_api_rate_limit),
     db: AsyncSession = Depends(get_db),
@@ -125,7 +128,10 @@ async def get_trade_flows(
     """Get trade flows as GeoJSON FeatureCollection.
 
     Each feature is a LineString between origin and destination ports,
-    with properties: origin, destination, volume_mt, value_usd, commodity.
+    with properties: origin, destination, volume_mt, value_usd, commodity, source.
+
+    source='live' returns flows enriched from real-time voyage data (#44).
+    source='un_comtrade' returns static trade data.
     """
     conditions = []
     params: dict[str, Any] = {"limit": limit}
@@ -134,12 +140,24 @@ async def get_trade_flows(
         conditions.append("tf.commodity = :commodity")
         params["commodity"] = commodity
 
+    if source:
+        conditions.append("tf.source = :source")
+        params["source"] = source
+
+    if origin_country:
+        conditions.append("tf.origin_country = :origin_country")
+        params["origin_country"] = origin_country
+
+    if dest_country:
+        conditions.append("tf.destination_country = :dest_country")
+        params["dest_country"] = dest_country
+
     where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
 
     result = await db.execute(
         text(f"""
             SELECT tf.commodity, tf.origin_country, tf.destination_country,
-                   tf.volume_mt, tf.value_usd,
+                   tf.volume_mt, tf.value_usd, tf.source,
                    op.latitude as origin_lat, op.longitude as origin_lng, op.name as origin_port,
                    dp.latitude as dest_lat, dp.longitude as dest_lng, dp.name as dest_port
             FROM trade_flows tf
@@ -173,6 +191,7 @@ async def get_trade_flows(
                     "destination_country": row["destination_country"],
                     "volume_mt": float(row["volume_mt"]) if row["volume_mt"] else None,
                     "value_usd": float(row["value_usd"]) if row["value_usd"] else None,
+                    "source": row["source"],
                 },
             })
 

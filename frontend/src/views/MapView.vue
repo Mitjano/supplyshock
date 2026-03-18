@@ -135,6 +135,7 @@ function initMap() {
     addVesselLabelLayer()
     addPortLayer()
     addTradeFlowLayer()
+    addFloatingStorageLayer()
     loadData()
   })
 
@@ -145,12 +146,21 @@ function initMap() {
     }
   })
 
-  map.on('mouseenter', 'vessels-layer', () => {
-    if (map) map.getCanvas().style.cursor = 'pointer'
+  map.on('click', 'floating-storage-dot', (e) => {
+    const feature = e.features?.[0]
+    if (feature?.properties?.mmsi) {
+      mapStore.selectVessel(feature.properties.mmsi)
+    }
   })
-  map.on('mouseleave', 'vessels-layer', () => {
-    if (map) map.getCanvas().style.cursor = ''
-  })
+
+  for (const layerId of ['vessels-layer', 'floating-storage-dot']) {
+    map.on('mouseenter', layerId, () => {
+      if (map) map.getCanvas().style.cursor = 'pointer'
+    })
+    map.on('mouseleave', layerId, () => {
+      if (map) map.getCanvas().style.cursor = ''
+    })
+  }
 }
 
 function registerVesselImages() {
@@ -274,6 +284,93 @@ function addTradeFlowLayer() {
   })
 }
 
+function addFloatingStorageLayer() {
+  if (!map) return
+
+  map.addSource('floating-storage', {
+    type: 'geojson',
+    data: { type: 'FeatureCollection', features: [] },
+  })
+
+  // Pulsing outer ring
+  map.addLayer({
+    id: 'floating-storage-pulse',
+    type: 'circle',
+    source: 'floating-storage',
+    paint: {
+      'circle-radius': ['interpolate', ['linear'], ['zoom'], 2, 6, 8, 14, 12, 20],
+      'circle-color': 'rgba(251, 146, 60, 0.15)',
+      'circle-stroke-width': 1.5,
+      'circle-stroke-color': 'rgba(251, 146, 60, 0.4)',
+    },
+  })
+
+  // Inner dot
+  map.addLayer({
+    id: 'floating-storage-dot',
+    type: 'circle',
+    source: 'floating-storage',
+    paint: {
+      'circle-radius': ['interpolate', ['linear'], ['zoom'], 2, 3, 8, 6, 12, 9],
+      'circle-color': '#fb923c',
+      'circle-stroke-width': 1.5,
+      'circle-stroke-color': 'rgba(255, 255, 255, 0.5)',
+    },
+  })
+
+  // Labels
+  map.addLayer({
+    id: 'floating-storage-labels',
+    type: 'symbol',
+    source: 'floating-storage',
+    minzoom: 6,
+    layout: {
+      'text-field': ['get', 'vessel_name'],
+      'text-font': ['Open Sans Regular', 'Arial Unicode MS Regular'],
+      'text-size': 10,
+      'text-offset': [0, 1.8],
+      'text-anchor': 'top',
+      'text-allow-overlap': false,
+    },
+    paint: {
+      'text-color': '#fb923c',
+      'text-halo-color': 'rgba(0,0,0,0.8)',
+      'text-halo-width': 1.5,
+    },
+  })
+}
+
+function updateFloatingStorageSource() {
+  if (!map) return
+  const source = map.getSource('floating-storage') as maplibregl.GeoJSONSource | undefined
+  if (!source) return
+
+  // Floating storage voyages have lat/lon from the vessel's last known position
+  // We need to cross-reference with vessel positions
+  const fsVoyages = mapStore.floatingStorageVessels
+  const vesselMap = new Map(mapStore.vessels.map(v => [v.mmsi, v]))
+
+  const features = fsVoyages
+    .map(v => {
+      const pos = vesselMap.get(v.mmsi)
+      if (!pos) return null
+      return {
+        type: 'Feature' as const,
+        geometry: { type: 'Point' as const, coordinates: [pos.longitude, pos.latitude] },
+        properties: {
+          mmsi: v.mmsi,
+          vessel_name: v.vessel_name || 'Unknown',
+          vessel_type: v.vessel_type,
+          cargo_type: v.cargo_type,
+          volume_estimate: v.volume_estimate,
+        },
+      }
+    })
+    .filter(Boolean)
+
+  source.setData({ type: 'FeatureCollection', features: features as any })
+}
+
 function updateVesselSource() {
   if (!map) return
   const source = map.getSource('vessels') as maplibregl.GeoJSONSource | undefined
@@ -326,10 +423,12 @@ async function loadData() {
       mapStore.fetchVessels(),
       mapStore.fetchPorts(),
       mapStore.fetchTradeFlows(),
+      mapStore.fetchVoyages({ status: 'floating_storage' }),
     ])
     updateVesselSource()
     updatePortSource()
     updateTradeFlowSource()
+    updateFloatingStorageSource()
   } catch {
     errorMessage.value = t('map.errorLoadingData')
   } finally {

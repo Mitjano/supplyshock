@@ -35,6 +35,7 @@ NASDAQ_SERIES = {
 # Series fetched via yfinance (Yahoo Finance) as fallback
 # These cover datasets that are deprecated or require premium on Nasdaq Data Link
 YFINANCE_SERIES = {
+    # ── Metals ──
     "copper": {
         "ticker": "HG=F",
         "benchmark": "COMEX",
@@ -54,6 +55,74 @@ YFINANCE_SERIES = {
         "commodity": "nickel",
         "unit": "tonne",
     },
+    "gold": {
+        "ticker": "GC=F",
+        "benchmark": "COMEX",
+        "commodity": "gold",
+        "unit": "troy_oz",
+    },
+    "silver": {
+        "ticker": "SI=F",
+        "benchmark": "COMEX",
+        "commodity": "silver",
+        "unit": "troy_oz",
+    },
+    "platinum": {
+        "ticker": "PL=F",
+        "benchmark": "NYMEX",
+        "commodity": "platinum",
+        "unit": "troy_oz",
+    },
+    "palladium": {
+        "ticker": "PA=F",
+        "benchmark": "NYMEX",
+        "commodity": "palladium",
+        "unit": "troy_oz",
+    },
+    "zinc": {
+        "ticker": "^SPGSZN",  # S&P GSCI Zinc proxy
+        "benchmark": "LME",
+        "commodity": "zinc",
+        "unit": "tonne",
+    },
+    "tin": {
+        "ticker": "^SPGSSN",  # S&P GSCI Tin proxy
+        "benchmark": "LME",
+        "commodity": "tin",
+        "unit": "tonne",
+    },
+    "lead": {
+        "ticker": "^SPGSLP",  # S&P GSCI Lead proxy
+        "benchmark": "LME",
+        "commodity": "lead",
+        "unit": "tonne",
+    },
+    # ── Energy ──
+    "coal": {
+        "ticker": "MTF=F",  # Newcastle coal futures
+        "benchmark": "ICE",
+        "commodity": "coal",
+        "unit": "tonne",
+    },
+    "natural_gas": {
+        "ticker": "NG=F",
+        "benchmark": "NYMEX",
+        "commodity": "natural_gas",
+        "unit": "mmbtu",
+    },
+    "gasoline": {
+        "ticker": "RB=F",
+        "benchmark": "NYMEX",
+        "commodity": "gasoline",
+        "unit": "gallon",
+    },
+    "heating_oil": {
+        "ticker": "HO=F",
+        "benchmark": "NYMEX",
+        "commodity": "heating_oil",
+        "unit": "gallon",
+    },
+    # ── Agriculture ──
     "wheat": {
         "ticker": "ZW=F",
         "benchmark": "CME",
@@ -65,6 +134,60 @@ YFINANCE_SERIES = {
         "benchmark": "CME",
         "commodity": "soybeans",
         "unit": "bushel",
+    },
+    "corn": {
+        "ticker": "ZC=F",
+        "benchmark": "CME",
+        "commodity": "corn",
+        "unit": "bushel",
+    },
+    "rice": {
+        "ticker": "ZR=F",
+        "benchmark": "CME",
+        "commodity": "rice",
+        "unit": "cwt",
+    },
+    "cotton": {
+        "ticker": "CT=F",
+        "benchmark": "ICE",
+        "commodity": "cotton",
+        "unit": "lb",
+    },
+    "coffee": {
+        "ticker": "KC=F",
+        "benchmark": "ICE",
+        "commodity": "coffee",
+        "unit": "lb",
+    },
+    "sugar": {
+        "ticker": "SB=F",
+        "benchmark": "ICE",
+        "commodity": "sugar",
+        "unit": "lb",
+    },
+    "cocoa": {
+        "ticker": "CC=F",
+        "benchmark": "ICE",
+        "commodity": "cocoa",
+        "unit": "tonne",
+    },
+    "palm_oil": {
+        "ticker": "FCPO=F",  # Bursa Malaysia palm oil futures
+        "benchmark": "MDEX",
+        "commodity": "palm_oil",
+        "unit": "tonne",
+    },
+    "lumber": {
+        "ticker": "LBS=F",
+        "benchmark": "CME",
+        "commodity": "lumber",
+        "unit": "mbf",
+    },
+    "rubber": {
+        "ticker": "^SPGSRU",  # S&P GSCI proxy
+        "benchmark": "TOCOM",
+        "commodity": "rubber",
+        "unit": "kg",
     },
 }
 

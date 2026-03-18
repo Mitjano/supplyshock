@@ -19,7 +19,7 @@ import AppLayout from '@/layouts/AppLayout.vue'
 const auth = useAuthStore()
 const route = useRoute()
 
-const isLoginRoute = computed(() => route.path === '/login')
+const isLoginRoute = computed(() => route.path === '/login' || route.path === '/en/login')
 </script>
 
 <style>
