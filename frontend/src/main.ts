@@ -26,6 +26,9 @@ const pageRoutes: RouteRecordRaw[] = [
   { path: 'simulations', component: () => import('./views/SimulationsView.vue') },
   { path: 'reports', component: () => import('./views/ReportsView.vue') },
   { path: 'settings', component: () => import('./views/SettingsView.vue') },
+  { path: 'compliance', component: () => import('./views/ComplianceDashboard.vue') },
+  { path: 'analytics', component: () => import('./views/AnalyticsDashboard.vue') },
+  { path: 'fleet', component: () => import('./views/FleetAnalytics.vue') },
 ]
 
 const router = createRouter({

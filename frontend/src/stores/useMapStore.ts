@@ -89,6 +89,29 @@ interface TrailPoint {
   speed_knots: number | null
 }
 
+interface PortCongestionData {
+  port_id: string
+  name: string
+  congestion_index: number
+  risk_level: 'normal' | 'elevated' | 'high' | 'critical'
+  waiting_vessels: number
+  vessels?: Array<{
+    mmsi: number
+    vessel_name: string | null
+    vessel_type: string
+    waiting_hours: number
+  }>
+}
+
+interface VoyagePrediction {
+  voyage_id: string
+  eta: string
+  confidence: number
+  predicted_route: Array<{ latitude: number; longitude: number }>
+  delay_risk: 'low' | 'medium' | 'high'
+  delay_hours_estimate: number
+}
+
 export const useMapStore = defineStore('map', () => {
   const vessels = ref<VesselPosition[]>([])
   const ports = ref<Port[]>([])
@@ -107,6 +130,8 @@ export const useMapStore = defineStore('map', () => {
   const lastUpdated = ref<Date | null>(null)
   const vesselTrail = ref<TrailPoint[]>([])
   const trailLoading = ref(false)
+  const portCongestion = ref<Map<string, PortCongestionData>>(new Map())
+  const voyagePredictions = ref<Map<string, VoyagePrediction>>(new Map())
 
   const filteredVessels = computed(() => {
     if (!vesselTypeFilter.value) return vessels.value
@@ -249,6 +274,54 @@ export const useMapStore = defineStore('map', () => {
     }
   }
 
+  async function fetchPortCongestion(portId: string): Promise<any> {
+    const headers = await getHeaders()
+    try {
+      const endpoint = portId === 'top10'
+        ? `${apiBase}/api/v1/ports/congestion?limit=10&sort=congestion_index:desc`
+        : `${apiBase}/api/v1/ports/${portId}/congestion`
+      const res = await fetch(endpoint, { headers })
+      if (res.ok) {
+        const body = await res.json()
+        if (portId === 'top10') {
+          // Store each port's congestion data in the map
+          const items = body.data || []
+          for (const item of items) {
+            portCongestion.value.set(item.port_id, item)
+          }
+          return items
+        } else {
+          const data = body.data
+          portCongestion.value.set(portId, data)
+          return data
+        }
+      } else {
+        throw new Error(`HTTP ${res.status}`)
+      }
+    } catch (e) {
+      console.error('Failed to fetch port congestion:', e)
+      throw e
+    }
+  }
+
+  async function fetchVoyagePrediction(voyageId: string): Promise<VoyagePrediction> {
+    const headers = await getHeaders()
+    try {
+      const res = await fetch(`${apiBase}/api/v1/voyages/${voyageId}/prediction`, { headers })
+      if (res.ok) {
+        const body = await res.json()
+        const prediction = body.data as VoyagePrediction
+        voyagePredictions.value.set(voyageId, prediction)
+        return prediction
+      } else {
+        throw new Error(`HTTP ${res.status}`)
+      }
+    } catch (e) {
+      console.error('Failed to fetch voyage prediction:', e)
+      throw e
+    }
+  }
+
   async function selectVessel(mmsi: number) {
     const headers = await getHeaders()
     try {
@@ -305,6 +378,8 @@ export const useMapStore = defineStore('map', () => {
     filteredVessels,
     floatingStorageVessels,
     underwayVoyages,
+    portCongestion,
+    voyagePredictions,
     fetchVessels,
     fetchPorts,
     fetchTradeFlows,
@@ -312,6 +387,8 @@ export const useMapStore = defineStore('map', () => {
     fetchAlerts,
     fetchVoyages,
     fetchVesselTrail,
+    fetchPortCongestion,
+    fetchVoyagePrediction,
     selectVessel,
     clearSelection,
   }

@@ -1,7 +1,8 @@
 """Voyage endpoints — /api/v1/voyages/*
 
-- GET /voyages          — list/filter voyages
-- GET /voyages/{id}     — voyage detail
+- GET /voyages                       — list/filter voyages
+- GET /voyages/{id}                  — voyage detail
+- GET /voyages/{id}/prediction       — predicted destination (Issue #46)
 """
 
 from typing import Any
@@ -10,6 +11,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from analytics.destination_predictor import predict_destination
+from analytics.emissions import estimate_voyage_emissions
+from analytics.eta_calculator import calculate_eta
 from dependencies import get_db
 from middleware.rate_limit import check_api_rate_limit
 
@@ -124,7 +128,55 @@ async def get_voyage(
     if not row:
         raise HTTPException(status_code=404, detail="Voyage not found")
 
-    return {"data": _format_voyage(row)}
+    voyage_data = _format_voyage(row)
+
+    # Enrich with ETA for active voyages
+    if row["status"] == "underway" and row["dest_port_id"]:
+        try:
+            eta = await calculate_eta(db, voyage_id)
+            voyage_data["eta"] = eta
+        except Exception:
+            voyage_data["eta"] = None
+    else:
+        voyage_data["eta"] = None
+
+    # Enrich with emission estimates if distance is available
+    voyage_data["emissions"] = None
+    if row["distance_nm"] and float(row["distance_nm"]) > 0:
+        try:
+            # Look up DWT from vessel_static_data
+            dwt_result = await db.execute(
+                text("SELECT dwt_estimate FROM vessel_static_data WHERE mmsi = :mmsi"),
+                {"mmsi": row["mmsi"]},
+            )
+            dwt_row = dwt_result.mappings().first()
+            dwt = float(dwt_row["dwt_estimate"]) if dwt_row and dwt_row["dwt_estimate"] else 150000.0
+
+            vessel_type = row["vessel_type"] or "default"
+            emissions = estimate_voyage_emissions(
+                distance_nm=float(row["distance_nm"]),
+                vessel_type=vessel_type,
+                speed_knots=12.0,  # Default average laden speed
+                dwt=dwt,
+            )
+            voyage_data["emissions"] = emissions
+        except Exception:
+            pass
+
+    return {"data": voyage_data}
+
+
+@router.get("/{voyage_id}/prediction")
+async def get_voyage_prediction(
+    voyage_id: str,
+    user: dict[str, Any] = Depends(check_api_rate_limit),
+    db: AsyncSession = Depends(get_db),
+):
+    """Predict the most likely destination port for a voyage."""
+    prediction = await predict_destination(db, voyage_id)
+    if prediction.get("error"):
+        raise HTTPException(status_code=404, detail=prediction["error"])
+    return {"data": prediction}
 
 
 def _format_voyage(row) -> dict[str, Any]:

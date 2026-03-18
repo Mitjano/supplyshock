@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Alert Notification - SupplyShock</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #0f172a; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color: #0f172a; padding: 40px 20px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="background-color: #1e293b; border-radius: 8px; overflow: hidden;">
+
+          <!-- Header -->
+          <tr>
+            <td style="padding: 32px 40px 24px 40px;">
+              <h1 style="margin: 0 0 8px 0; font-size: 22px; font-weight: 700; color: #e2e8f0;">
+                SupplyShock
+              </h1>
+              <p style="margin: 0; font-size: 14px; color: #94a3b8;">
+                Alert Notification
+              </p>
+            </td>
+          </tr>
+
+          <!-- Greeting -->
+          <tr>
+            <td style="padding: 0 40px 24px 40px;">
+              <p style="margin: 0; font-size: 16px; color: #e2e8f0;">
+                Hi {{ name }},
+              </p>
+            </td>
+          </tr>
+
+          <!-- Severity Badge -->
+          <tr>
+            <td style="padding: 0 40px 16px 40px;">
+              {% if alert_severity == 'critical' %}
+              <span style="display: inline-block; padding: 4px 12px; border-radius: 4px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; background-color: rgba(239, 68, 68, 0.15); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3);">
+                Critical
+              </span>
+              {% elif alert_severity == 'warning' %}
+              <span style="display: inline-block; padding: 4px 12px; border-radius: 4px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; background-color: rgba(245, 158, 11, 0.15); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.3);">
+                Warning
+              </span>
+              {% else %}
+              <span style="display: inline-block; padding: 4px 12px; border-radius: 4px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; background-color: rgba(59, 130, 246, 0.15); color: #3b82f6; border: 1px solid rgba(59, 130, 246, 0.3);">
+                Info
+              </span>
+              {% endif %}
+            </td>
+          </tr>
+
+          <!-- Alert Title -->
+          <tr>
+            <td style="padding: 0 40px 16px 40px;">
+              <h2 style="margin: 0; font-size: 18px; font-weight: 600; color: #f1f5f9;">
+                {{ alert_title }}
+              </h2>
+            </td>
+          </tr>
+
+          <!-- Alert Details Card -->
+          <tr>
+            <td style="padding: 0 40px 24px 40px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color: #0f172a; border-radius: 6px; border: 1px solid #334155;">
+                <tr>
+                  <td style="padding: 20px;">
+                    <!-- Commodity -->
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom: 12px;">
+                      <tr>
+                        <td style="font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: #94a3b8; padding-bottom: 4px;">
+                          Commodity
+                        </td>
+                      </tr>
+                      <tr>
+                        <td style="font-size: 15px; color: #e2e8f0;">
+                          {{ alert_commodity }}
+                        </td>
+                      </tr>
+                    </table>
+
+                    <!-- Time -->
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom: 16px;">
+                      <tr>
+                        <td style="font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: #94a3b8; padding-bottom: 4px;">
+                          Time
+                        </td>
+                      </tr>
+                      <tr>
+                        <td style="font-size: 15px; color: #e2e8f0;">
+                          {{ alert_time }}
+                        </td>
+                      </tr>
+                    </table>
+
+                    <!-- Divider -->
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom: 16px;">
+                      <tr>
+                        <td style="border-top: 1px solid #334155;"></td>
+                      </tr>
+                    </table>
+
+                    <!-- Alert Body -->
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                      <tr>
+                        <td style="font-size: 14px; line-height: 1.6; color: #cbd5e1;">
+                          {{ alert_body }}
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- CTA Button -->
+          <tr>
+            <td style="padding: 0 40px 32px 40px;" align="center">
+              <a href="{{ app_url }}/alerts" target="_blank" style="display: inline-block; padding: 12px 32px; background-color: #3b82f6; color: #ffffff; text-decoration: none; font-size: 15px; font-weight: 600; border-radius: 6px;">
+                View Alert
+              </a>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="padding: 24px 40px; border-top: 1px solid #334155;">
+              <p style="margin: 0 0 8px 0; font-size: 13px; color: #64748b; text-align: center;">
+                You received this email because you have alert notifications enabled on SupplyShock.
+              </p>
+              <p style="margin: 0; font-size: 13px; color: #64748b; text-align: center;">
+                <a href="{{ app_url }}/settings/notifications" style="color: #94a3b8; text-decoration: underline;">
+                  Unsubscribe from alert notifications
+                </a>
+              </p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

@@ -8,7 +8,9 @@
     "fleet": "Flota",
     "simulations": "Symulacje",
     "reports": "Raporty",
-    "settings": "Ustawienia"
+    "settings": "Ustawienia",
+    "compliance": "Zgodność",
+    "analytics": "Analityka"
   },
   "layout": {
     "overview": "PRZEGLĄD",
@@ -384,6 +386,158 @@
       "dateFrom": "Data od",
       "dateTo": "Data do"
     }
+  },
+  "analytics": {
+    "congestion": {
+      "title": "Zatłoczenie portów",
+      "autoRefresh": "Auto-odświeżanie 5 min",
+      "waitingVessels": "{count} statków oczekuje",
+      "risk": {
+        "normal": "Normalny",
+        "elevated": "Podwyższony",
+        "high": "Wysoki",
+        "critical": "Krytyczny"
+      }
+    },
+    "trend": {
+      "title": "Trendy podażowe",
+      "subtitle": "Wolumen 90-dniowy z prognozą trendu",
+      "growing": "Rosnący",
+      "declining": "Malejący",
+      "stable": "Stabilny",
+      "volume": "Wolumen",
+      "prediction": "Prognoza"
+    },
+    "prediction": {
+      "eta": "Prognozowane ETA",
+      "confidence": "Pewność",
+      "delayRisk": "Ryzyko opóźnienia",
+      "delayEstimate": "Szac. opóźnienie",
+      "low": "Niskie",
+      "medium": "Średnie",
+      "high": "Wysokie"
+    },
+    "dashboard": {
+      "title": "Panel analityczny",
+      "tabs": {
+        "cot": "COT",
+        "inventories": "Zapasy",
+        "cracks": "Crack Spready",
+        "correlations": "Korelacje",
+        "seasonal": "Sezonowość",
+        "forwardCurves": "Krzywe terminowe",
+        "balance": "Podaż/Popyt",
+        "ports": "Porty"
+      }
+    },
+    "cot": {
+      "commercial": "Pozycje komercyjne netto",
+      "managedMoney": "Managed Money netto",
+      "price": "Cena",
+      "contracts": "Kontrakty"
+    },
+    "inventory": {
+      "fiveYearRange": "Zakres 5-letni",
+      "fiveYearAvg": "Średnia 5-letnia",
+      "previousYear": "Poprzedni rok",
+      "currentYear": "Bieżący rok"
+    },
+    "cracks": {
+      "seasonalOverlay": "Nakładka sezonowa",
+      "seasonal321": "Sezonowy 3-2-1"
+    },
+    "seasonal": {
+      "median": "Mediana"
+    },
+    "forwardCurve": {
+      "today": "Dziś",
+      "oneWeekAgo": "Tydzień temu",
+      "oneMonthAgo": "Miesiąc temu",
+      "expiry": "Miesiąc wygaśnięcia",
+      "contango": "Contango",
+      "backwardation": "Backwardation",
+      "flat": "Płaska"
+    },
+    "balance": {
+      "production": "Produkcja",
+      "consumption": "Konsumpcja",
+      "endingStocks": "Zapasy końcowe",
+      "stocks": "Zapasy (mb)"
+    },
+    "fleet": {
+      "title": "Analityka floty",
+      "owner": "Właściciel",
+      "vesselCount": "Statki",
+      "totalDwt": "Łączne DWT",
+      "utilization": "Wykorzystanie",
+      "vesselName": "Nazwa statku",
+      "type": "Typ",
+      "flag": "Bandera",
+      "status": "Status"
+    },
+    "port": {
+      "vessels": "Statki",
+      "waitDays": "Śr. oczekiwanie (dni)",
+      "throughput": "Przepustowość",
+      "rankings": "Ranking portów",
+      "portName": "Port",
+      "congestionIdx": "Indeks zatłoczenia"
+    }
+  },
+  "chat": {
+    "title": "SupplyShock AI",
+    "placeholder": "Zapytaj o łańcuchy dostaw, surowce, alerty...",
+    "emptyTitle": "Zapytaj SupplyShock AI",
+    "emptyDesc": "Uzyskaj informacje o cenach surowców, aktywnych alertach, zatłoczeniu portów i więcej.",
+    "messagesUsed": "dziś",
+    "clear": "Wyczyść czat",
+    "errorGeneric": "Wystąpił błąd. Spróbuj ponownie."
+  },
+  "compliance": {
+    "title": "Panel zgodności",
+    "subtitle": "Sprawdzanie sankcji, wykrywanie luk AIS i monitorowanie transferów STS",
+    "allSeverities": "Wszystkie priorytety",
+    "tabs": {
+      "sanctions": "Sankcje",
+      "aisGaps": "Luki AIS",
+      "stsEvents": "Transfery STS"
+    },
+    "vesselName": "Nazwa statku",
+    "sanctionSource": "Źródło",
+    "program": "Program",
+    "matchType": "Typ dopasowania",
+    "severity": {
+      "label": "Priorytet",
+      "critical": "Krytyczny",
+      "high": "Wysoki",
+      "medium": "Średni",
+      "low": "Niski"
+    },
+    "noFlagged": "Nie wykryto statków objętych sankcjami",
+    "noAisGaps": "Nie znaleziono zdarzeń luk AIS",
+    "noStsEvents": "Nie wykryto zdarzeń transferów STS",
+    "lastSeen": "Ostatnio widziany",
+    "lastSeenTime": "Czas ostatniego kontaktu",
+    "reappeared": "Ponownie wykryty",
+    "reappearedTime": "Czas ponownego wykrycia",
+    "gapHours": "Luka (godziny)",
+    "distanceNm": "Dystans (Mm)",
+    "vesselA": "Statek A",
+    "vesselB": "Statek B",
+    "location": "Lokalizacja",
+    "detectedAt": "Wykryto o",
+    "ladenStatusA": "Załadunek (A)",
+    "ladenStatusB": "Załadunek (B)"
+  },
+  "weather": {
+    "title": "Pogoda",
+    "toggle": "Przełącz nakładkę pogodową",
+    "waveHeight": "Wysokość fal",
+    "wavePeriod": "Okres fal",
+    "waveDirection": "Kierunek fal",
+    "windSpeed": "Prędkość wiatru",
+    "windDirection": "Kierunek wiatru",
+    "stormWarning": "Ostrzeżenie burzowe"
   },
   "search": {
     "placeholder": "Szukaj statków, portów, surowców...",

@@ -44,6 +44,9 @@
       :trail-visible="trailVisible"
     />
 
+    <!-- Weather layer -->
+    <WeatherLayer />
+
     <!-- Right panel -->
     <RightPanel />
   </div>
@@ -60,6 +63,7 @@ import VesselPopup from '../components/map/VesselPopup.vue'
 import MapLegend from '../components/map/MapLegend.vue'
 import MapFilters from '../components/map/MapFilters.vue'
 import RightPanel from '../components/map/RightPanel.vue'
+import WeatherLayer from '../components/map/WeatherLayer.vue'
 
 const { t } = useI18n()
 const mapStore = useMapStore()

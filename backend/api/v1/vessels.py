@@ -194,6 +194,54 @@ async def get_vessel_detail(
     return {"data": data}
 
 
+@router.get("/{mmsi}/ownership")
+async def get_vessel_ownership(
+    mmsi: int,
+    user: dict[str, Any] = Depends(check_api_rate_limit),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get vessel ownership and classification details from vessel_static_data."""
+    result = await db.execute(
+        text("""
+            SELECT vs.mmsi, vs.imo, vs.vessel_name, vs.callsign,
+                   vs.owner, vs.operator, vs.classification_society,
+                   vs.year_built, vs.gross_tonnage, vs.dwt_estimate,
+                   vs.length_m, vs.beam_m, vs.max_draught,
+                   vs.flag_country, vs.vessel_type
+            FROM vessel_static_data vs
+            WHERE vs.mmsi = :mmsi
+        """),
+        {"mmsi": mmsi},
+    )
+    row = result.mappings().first()
+
+    if not row:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "Vessel static data not found", "code": "VESSEL_NOT_FOUND"},
+        )
+
+    return {
+        "data": {
+            "mmsi": row["mmsi"],
+            "imo": row["imo"],
+            "vessel_name": row["vessel_name"],
+            "callsign": row["callsign"],
+            "owner": row["owner"],
+            "operator": row["operator"],
+            "classification_society": row["classification_society"],
+            "year_built": row["year_built"],
+            "gross_tonnage": float(row["gross_tonnage"]) if row["gross_tonnage"] else None,
+            "dwt_estimate": float(row["dwt_estimate"]) if row["dwt_estimate"] else None,
+            "length_m": float(row["length_m"]) if row["length_m"] else None,
+            "beam_m": float(row["beam_m"]) if row["beam_m"] else None,
+            "max_draught": float(row["max_draught"]) if row["max_draught"] else None,
+            "flag_country": row["flag_country"],
+            "vessel_type": row["vessel_type"],
+        }
+    }
+
+
 @router.get("/{mmsi}/trail")
 async def get_vessel_trail(
     mmsi: int,

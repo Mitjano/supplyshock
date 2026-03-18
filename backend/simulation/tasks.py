@@ -61,6 +61,84 @@ celery_app.conf.update(
             "task": "detect_floating_storage",
             "schedule": 3600.0,  # every 1 hour
         },
+        "update-port-congestion": {
+            "task": "update_port_congestion",
+            "schedule": crontab(minute="*/15"),  # every 15 minutes
+        },
+        "update-voyage-predictions": {
+            "task": "update_voyage_predictions",
+            "schedule": 3600.0,  # every 1 hour
+        },
+        # ── Compliance (#52, #53, #59) ──
+        "import-sanctions": {
+            "task": "import_sanctions",
+            "schedule": crontab(minute=0, hour=4),  # daily at 4:00 UTC
+        },
+        "detect-ais-gaps": {
+            "task": "detect_ais_gaps",
+            "schedule": crontab(minute="*/30"),  # every 30 minutes
+        },
+        "detect-sts-transfers": {
+            "task": "detect_sts_transfers",
+            "schedule": crontab(minute="*/30"),  # every 30 minutes
+        },
+        "detect-ais-spoofing": {
+            "task": "detect_ais_spoofing",
+            "schedule": crontab(minute="*/15"),  # every 15 minutes
+        },
+        # ── Commodity prices (#61, #62, #63) ──
+        "ingest-yfinance-prices": {
+            "task": "ingest_yfinance_prices",
+            "schedule": crontab(minute=30, hour="*/4"),  # every 4 hours at :30
+        },
+        "ingest-fred-daily": {
+            "task": "ingest_fred_daily",
+            "schedule": crontab(minute=0, hour="*/6"),  # every 6 hours
+        },
+        "ingest-fred-monthly": {
+            "task": "ingest_fred_monthly",
+            "schedule": crontab(minute=0, hour=5),  # daily at 5:00 UTC
+        },
+        "ingest-world-bank-prices": {
+            "task": "ingest_world_bank_prices",
+            "schedule": crontab(minute=0, hour=6, day_of_week=1),  # weekly on Monday at 6:00 UTC
+        },
+        # ── Price anomaly detection (#60) ──
+        "detect-price-anomalies": {
+            "task": "detect_price_anomalies",
+            "schedule": 3600.0,  # every 1 hour
+        },
+        # ── Advanced analytics (#64-#68) ──
+        "import-cftc-cot": {
+            "task": "import_cftc_cot",
+            "schedule": crontab(minute=0, hour=22, day_of_week=5),  # Friday 22:00 UTC
+        },
+        "import-eia-inventories": {
+            "task": "import_eia_inventories",
+            "schedule": crontab(minute=0, hour=17, day_of_week=3),  # Wednesday 17:00 UTC
+        },
+        "calculate-crack-spreads": {
+            "task": "calculate_crack_spreads",
+            "schedule": crontab(minute=0, hour="*/4"),  # every 4 hours
+        },
+        # ── Forward curves & supply/demand (#69, #70) ──
+        "fetch-forward-curves": {
+            "task": "fetch_forward_curves",
+            "schedule": crontab(minute=0, hour="*/4"),  # every 4 hours
+        },
+        "import-eia-steo": {
+            "task": "import_eia_steo",
+            "schedule": crontab(minute=0, hour=6, day_of_month=1),  # 1st of month at 6:00 UTC
+        },
+        "import-usda-wasde": {
+            "task": "import_usda_wasde",
+            "schedule": crontab(minute=0, hour=6, day_of_month=12),  # 12th of month at 6:00 UTC
+        },
+        # ── Port analytics (#72) ──
+        "calculate-port-analytics": {
+            "task": "calculate_port_analytics",
+            "schedule": 3600.0,  # every 1 hour
+        },
     },
 )
 
@@ -883,4 +961,316 @@ def detect_floating_storage_task(self):
         detect_floating_storage()
     except Exception as exc:
         logger.error("Floating storage detection failed: %s", exc)
+        raise self.retry(exc=exc)
+
+
+# ── Port congestion analytics (Issue #47) ──
+
+@celery_app.task(name="update_port_congestion", bind=True, max_retries=2, default_retry_delay=60)
+def update_port_congestion_task(self):
+    """Batch-update congestion metrics for all major ports (every 15 min).
+
+    Results are cached in Redis with 20 min TTL for fast API reads.
+    """
+    try:
+        from analytics.port_congestion import update_all_port_congestion
+        from dependencies import get_db
+
+        loop = asyncio.new_event_loop()
+        try:
+            from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
+            engine = create_async_engine(settings.DATABASE_URL)
+            async_session = async_sessionmaker(engine, expire_on_commit=False)
+
+            async def _run():
+                async with async_session() as db:
+                    return await update_all_port_congestion(db)
+
+            result = loop.run_until_complete(_run())
+            return {"ports_updated": result}
+        finally:
+            loop.close()
+    except Exception as exc:
+        logger.error("Port congestion update failed: %s", exc)
+        raise self.retry(exc=exc)
+
+
+@celery_app.task(name="update_voyage_predictions", bind=True, max_retries=2, default_retry_delay=60)
+def update_voyage_predictions_task(self):
+    """Batch-update ETA predictions for all active voyages (every 1h).
+
+    Computes ETA for each underway voyage and caches in Redis.
+    """
+    import json
+
+    try:
+        from analytics.eta_calculator import calculate_eta
+
+        loop = asyncio.new_event_loop()
+        try:
+            from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
+            engine = create_async_engine(settings.DATABASE_URL)
+            async_session = async_sessionmaker(engine, expire_on_commit=False)
+
+            async def _run():
+                import redis as aioredis
+                async with async_session() as db:
+                    # Get all underway voyages with a destination
+                    from sqlalchemy import text
+                    result = await db.execute(
+                        text("""
+                            SELECT id FROM voyages
+                            WHERE status = 'underway' AND dest_port_id IS NOT NULL
+                        """),
+                    )
+                    voyage_ids = [str(row["id"]) for row in result.mappings().all()]
+
+                    updated = 0
+                    for vid in voyage_ids:
+                        try:
+                            eta = await calculate_eta(db, vid)
+                            # Cache ETA in Redis with 90 min TTL
+                            from dependencies import get_redis
+                            redis = await get_redis()
+                            await redis.setex(
+                                f"voyage:{vid}:eta", 5400,
+                                json.dumps(eta),
+                            )
+                            updated += 1
+                        except Exception:
+                            logger.exception("Failed ETA calc for voyage %s", vid)
+
+                    return updated
+
+            result = loop.run_until_complete(_run())
+            return {"voyages_updated": result}
+        finally:
+            loop.close()
+    except Exception as exc:
+        logger.error("Voyage prediction update failed: %s", exc)
+        raise self.retry(exc=exc)
+
+
+# ── Compliance: sanctions ingestion (#52) ──
+
+@celery_app.task(name="import_sanctions", bind=True, max_retries=3, default_retry_delay=300)
+def import_sanctions_task(self):
+    """Download and upsert OFAC + EU sanctions lists (daily)."""
+    try:
+        from ingestion.sanctions import import_ofac_sanctions, import_eu_sanctions
+        ofac_count = import_ofac_sanctions()
+        eu_count = import_eu_sanctions()
+        return {"ofac": ofac_count, "eu": eu_count}
+    except Exception as exc:
+        logger.error("Sanctions import failed: %s", exc)
+        raise self.retry(exc=exc)
+
+
+# ── Compliance: AIS gap detection (#53) ──
+
+@celery_app.task(name="detect_ais_gaps", bind=True, max_retries=2, default_retry_delay=60)
+def detect_ais_gaps_task(self):
+    """Detect AIS gaps (>6h disappearance, >50km displacement)."""
+    try:
+        from compliance.ais_gap_detector import detect_ais_gaps
+        count = detect_ais_gaps()
+        return {"alerts_created": count}
+    except Exception as exc:
+        logger.error("AIS gap detection failed: %s", exc)
+        raise self.retry(exc=exc)
+
+
+# ── Compliance: STS transfer detection (#53) ──
+
+@celery_app.task(name="detect_sts_transfers", bind=True, max_retries=2, default_retry_delay=60)
+def detect_sts_transfers_task(self):
+    """Detect potential ship-to-ship transfers (<500m, both slow, laden)."""
+    try:
+        from compliance.sts_detector import detect_sts_transfers
+        count = detect_sts_transfers()
+        return {"alerts_created": count}
+    except Exception as exc:
+        logger.error("STS transfer detection failed: %s", exc)
+        raise self.retry(exc=exc)
+
+
+# ── Compliance: AIS spoofing detection (#59) ──
+
+@celery_app.task(name="detect_ais_spoofing", bind=True, max_retries=2, default_retry_delay=60)
+def detect_ais_spoofing_task(self):
+    """Detect AIS spoofing (teleportation + impossible speed)."""
+    try:
+        from compliance.spoofing_detector import detect_ais_spoofing
+        count = detect_ais_spoofing()
+        return {"alerts_created": count}
+    except Exception as exc:
+        logger.error("AIS spoofing detection failed: %s", exc)
+        raise self.retry(exc=exc)
+
+
+# ── Commodity prices: yfinance futures (#61) ──
+
+@celery_app.task(name="ingest_yfinance_prices", bind=True, max_retries=3, default_retry_delay=120)
+def ingest_yfinance_prices_task(self):
+    """Fetch daily futures prices from Yahoo Finance."""
+    try:
+        from ingestion.yfinance_prices import ingest_yfinance_prices
+        return ingest_yfinance_prices()
+    except Exception as exc:
+        logger.error("yfinance price ingestion failed: %s", exc)
+        raise self.retry(exc=exc)
+
+
+# ── Commodity prices: FRED daily (#62) ──
+
+@celery_app.task(name="ingest_fred_daily", bind=True, max_retries=3, default_retry_delay=120)
+def ingest_fred_daily_task(self):
+    """Fetch daily energy prices from FRED."""
+    try:
+        from ingestion.fred_prices import ingest_fred_daily
+        api_key = getattr(settings, "FRED_API_KEY", None)
+        if not api_key:
+            logger.error("FRED_API_KEY not configured")
+            return {"error": "FRED_API_KEY not configured"}
+        return ingest_fred_daily(api_key)
+    except Exception as exc:
+        logger.error("FRED daily ingestion failed: %s", exc)
+        raise self.retry(exc=exc)
+
+
+# ── Commodity prices: FRED monthly (#62) ──
+
+@celery_app.task(name="ingest_fred_monthly", bind=True, max_retries=3, default_retry_delay=120)
+def ingest_fred_monthly_task(self):
+    """Fetch monthly global commodity prices from FRED."""
+    try:
+        from ingestion.fred_prices import ingest_fred_monthly
+        api_key = getattr(settings, "FRED_API_KEY", None)
+        if not api_key:
+            logger.error("FRED_API_KEY not configured")
+            return {"error": "FRED_API_KEY not configured"}
+        return ingest_fred_monthly(api_key)
+    except Exception as exc:
+        logger.error("FRED monthly ingestion failed: %s", exc)
+        raise self.retry(exc=exc)
+
+
+# ── Commodity prices: World Bank Pink Sheet (#63) ──
+
+@celery_app.task(name="ingest_world_bank_prices", bind=True, max_retries=3, default_retry_delay=300)
+def ingest_world_bank_prices_task(self):
+    """Download and parse World Bank Pink Sheet for fertilizer prices."""
+    try:
+        from ingestion.world_bank_prices import ingest_world_bank_prices
+        return ingest_world_bank_prices()
+    except Exception as exc:
+        logger.error("World Bank price ingestion failed: %s", exc)
+        raise self.retry(exc=exc)
+
+
+# ── Price anomaly detection (#60) ──
+
+@celery_app.task(name="detect_price_anomalies", bind=True, max_retries=2, default_retry_delay=60)
+def detect_price_anomalies_task(self):
+    """Detect statistical price anomalies (z-score spikes, momentum) every 1h."""
+    try:
+        from analytics.price_anomaly import detect_price_anomalies_sync
+        alerts = detect_price_anomalies_sync()
+        return {"alerts_created": len(alerts)}
+    except Exception as exc:
+        logger.error("Price anomaly detection failed: %s", exc)
+        raise self.retry(exc=exc)
+
+
+# ── CFTC COT (#64) ──
+
+@celery_app.task(name="import_cftc_cot", bind=True, max_retries=3, default_retry_delay=300)
+def import_cftc_cot_task(self):
+    """Download and parse CFTC Commitments of Traders report (weekly)."""
+    try:
+        from ingestion.cftc_cot import ingest_cftc_cot
+        count = ingest_cftc_cot()
+        return {"records_ingested": count}
+    except Exception as exc:
+        logger.error("CFTC COT ingestion failed: %s", exc)
+        raise self.retry(exc=exc)
+
+
+# ── EIA Inventories (#65) ──
+
+@celery_app.task(name="import_eia_inventories", bind=True, max_retries=3, default_retry_delay=300)
+def import_eia_inventories_task(self):
+    """Fetch EIA weekly petroleum inventory data."""
+    try:
+        from ingestion.eia_inventories import ingest_eia_inventories
+        count = ingest_eia_inventories()
+        return {"records_ingested": count}
+    except Exception as exc:
+        logger.error("EIA inventory ingestion failed: %s", exc)
+        raise self.retry(exc=exc)
+
+
+# ── Crack Spreads (#66) ──
+
+@celery_app.task(name="calculate_crack_spreads", bind=True, max_retries=2, default_retry_delay=60)
+def calculate_crack_spreads_task(self):
+    """Calculate 3-2-1 crack spread from latest commodity prices."""
+    try:
+        from analytics.crack_spreads import calculate_crack_spreads
+        result = calculate_crack_spreads()
+        return result
+    except Exception as exc:
+        logger.error("Crack spread calculation failed: %s", exc)
+        raise self.retry(exc=exc)
+
+
+# ── Forward Curves (#69) ──
+
+@celery_app.task(name="fetch_forward_curves", bind=True, max_retries=3, default_retry_delay=120)
+def fetch_forward_curves_task(self):
+    """Fetch forward/futures curves for key commodities via yfinance."""
+    try:
+        from ingestion.forward_curves import fetch_forward_curves
+        return fetch_forward_curves()
+    except Exception as exc:
+        logger.error("Forward curves fetch failed: %s", exc)
+        raise self.retry(exc=exc)
+
+
+# ── EIA STEO (#70) ──
+
+@celery_app.task(name="import_eia_steo", bind=True, max_retries=3, default_retry_delay=120)
+def import_eia_steo_task(self):
+    """Import EIA Short-Term Energy Outlook supply/demand data."""
+    try:
+        from ingestion.eia_steo import import_eia_steo
+        return import_eia_steo()
+    except Exception as exc:
+        logger.error("EIA STEO import failed: %s", exc)
+        raise self.retry(exc=exc)
+
+
+# ── USDA WASDE (#70) ──
+
+@celery_app.task(name="import_usda_wasde", bind=True, max_retries=3, default_retry_delay=120)
+def import_usda_wasde_task(self):
+    """Import USDA WASDE agricultural supply/demand data."""
+    try:
+        from ingestion.usda_wasde import import_usda_wasde
+        return import_usda_wasde()
+    except Exception as exc:
+        logger.error("USDA WASDE import failed: %s", exc)
+        raise self.retry(exc=exc)
+
+
+# ── Port Analytics (#72) ──
+
+@celery_app.task(name="calculate_port_analytics", bind=True, max_retries=2, default_retry_delay=60)
+def calculate_port_analytics_task(self):
+    """Calculate performance analytics for all major ports."""
+    try:
+        from analytics.port_analytics import calculate_all_port_analytics
+        return calculate_all_port_analytics()
+    except Exception as exc:
+        logger.error("Port analytics calculation failed: %s", exc)
         raise self.retry(exc=exc)

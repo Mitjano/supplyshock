@@ -21,6 +21,16 @@ from api.v1.reports import router as reports_router
 from api.v1.api_keys import router as api_keys_router
 from api.v1.search import router as search_router
 from api.v1.voyages import router as voyages_router
+from api.v1.chat import router as chat_router
+from api.v1.compliance import router as compliance_router
+from api.v1.weather import router as weather_router
+from api.v1.export import router as export_router
+from api.v1.webhooks import router as webhooks_router
+from api.v1.infrastructure import router as infrastructure_router
+from api.v1.analytics import router as analytics_router
+from api.v1.fleet import router as fleet_router
+from api.v1.notifications import router as notifications_router
+from api.v1.events import router as events_router
 from webhooks.stripe import router as stripe_webhook_router
 
 # ── Sentry ──
@@ -116,6 +126,16 @@ app.include_router(reports_router, prefix="/api/v1")
 app.include_router(api_keys_router, prefix="/api/v1")
 app.include_router(search_router, prefix="/api/v1")
 app.include_router(voyages_router, prefix="/api/v1")
+app.include_router(chat_router, prefix="/api/v1")
+app.include_router(compliance_router, prefix="/api/v1")
+app.include_router(export_router, prefix="/api/v1")
+app.include_router(webhooks_router, prefix="/api/v1")
+app.include_router(weather_router, prefix="/api/v1")
+app.include_router(infrastructure_router, prefix="/api/v1")
+app.include_router(analytics_router, prefix="/api/v1")
+app.include_router(fleet_router, prefix="/api/v1")
+app.include_router(notifications_router, prefix="/api/v1")
+app.include_router(events_router, prefix="/api/v1")
 
 # ── Webhooks (no /api/v1 prefix) ──
 app.include_router(stripe_webhook_router)

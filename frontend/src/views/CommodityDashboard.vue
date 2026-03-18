@@ -101,6 +101,41 @@
         </tbody>
       </table>
     </div>
+
+    <!-- Supply Trends -->
+    <div class="ss-card trends-section">
+      <div class="trends-header">
+        <h2>{{ t('analytics.trend.title') }}</h2>
+        <span class="text-muted trends-subtitle">{{ t('analytics.trend.subtitle') }}</span>
+      </div>
+
+      <div v-if="trendLoading" class="trends-grid">
+        <div v-for="i in 4" :key="i" class="trend-card skeleton-card">
+          <div class="skeleton-line skeleton-title" />
+          <div class="skeleton-line skeleton-bar" style="height: 120px" />
+        </div>
+      </div>
+
+      <div v-else-if="trendData.length === 0" class="empty-state text-muted">
+        {{ t('common.noData') }}
+      </div>
+
+      <div v-else class="trends-grid">
+        <div v-for="trend in trendData" :key="trend.commodity" class="trend-card">
+          <div class="trend-card-header">
+            <span class="trend-commodity">{{ formatName(trend.commodity) }}</span>
+            <span class="trend-badge" :class="'trend-' + trend.direction">
+              <i :class="trendIcon(trend.direction)" />
+              {{ t('analytics.trend.' + trend.direction) }}
+            </span>
+          </div>
+          <div
+            class="trend-chart-container"
+            :ref="(el) => registerTrendChart(el as HTMLElement, trend.commodity)"
+          />
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -129,11 +164,23 @@ const selectedCommodity = ref<string | null>(null)
 const selectedDays = ref(30)
 const historyLoading = ref(false)
 const historyData = ref<any[]>([])
+const priceBands = ref<any>(null)
 const flows = ref<any[]>([])
 const chartRef = ref<HTMLElement | null>(null)
 let chartInstance: echarts.ECharts | null = null
 const sparklineInstances = new Map<string, echarts.ECharts>()
 let pollInterval: ReturnType<typeof setInterval> | null = null
+
+// Supply Trends state
+interface TrendItem {
+  commodity: string
+  direction: 'growing' | 'declining' | 'stable'
+  history: { date: string; volume: number }[]
+  prediction: { date: string; volume: number }[]
+}
+const trendData = ref<TrendItem[]>([])
+const trendLoading = ref(false)
+const trendChartInstances = new Map<string, echarts.ECharts>()
 
 const categories = [
   { key: 'all', label: computed(() => t('commodities.all')) },
@@ -210,15 +257,20 @@ async function fetchHistory() {
   if (!selectedCommodity.value) return
   historyLoading.value = true
   try {
-    const data = await apiFetch(
-      `/commodities/prices/${selectedCommodity.value}/history`,
-      { days: String(selectedDays.value) }
-    )
-    historyData.value = data.data || []
+    const [historyResp, bandsResp] = await Promise.all([
+      apiFetch(
+        `/commodities/prices/${selectedCommodity.value}/history`,
+        { days: String(selectedDays.value) }
+      ),
+      apiFetch('/analytics/price-bands', { commodity: selectedCommodity.value }).catch(() => null),
+    ])
+    historyData.value = historyResp.data || []
+    priceBands.value = bandsResp?.data || null
     await nextTick()
     renderChart()
   } catch {
     historyData.value = []
+    priceBands.value = null
   } finally {
     historyLoading.value = false
   }
@@ -246,24 +298,145 @@ function renderChart() {
   const times = historyData.value.map(d => d.time)
   const vals = historyData.value.map(d => d.price)
 
+  // Build band data aligned to the history time axis
+  const bands = priceBands.value?.bands || []
+  const bandMap = new Map<string, any>()
+  for (const b of bands) {
+    bandMap.set(b.date, b)
+  }
+
+  // For each history time point, find the matching band entry (by date portion)
+  const upper2 = times.map((t: string) => {
+    const day = t.slice(0, 10)
+    return bandMap.get(day)?.upper_2s ?? null
+  })
+  const lower2 = times.map((t: string) => {
+    const day = t.slice(0, 10)
+    return bandMap.get(day)?.lower_2s ?? null
+  })
+  const upper1 = times.map((t: string) => {
+    const day = t.slice(0, 10)
+    return bandMap.get(day)?.upper_1s ?? null
+  })
+  const lower1 = times.map((t: string) => {
+    const day = t.slice(0, 10)
+    return bandMap.get(day)?.lower_1s ?? null
+  })
+  const meanLine = times.map((t: string) => {
+    const day = t.slice(0, 10)
+    return bandMap.get(day)?.mean ?? null
+  })
+
+  const hasBands = bands.length > 0
+
+  const series: any[] = []
+
+  // 2σ band (darker shaded area) — rendered as two lines with area between
+  if (hasBands) {
+    series.push({
+      name: '-2\u03c3',
+      type: 'line',
+      data: lower2,
+      smooth: true,
+      symbol: 'none',
+      lineStyle: { opacity: 0 },
+      stack: 'band2',
+      stackStrategy: 'all',
+      silent: true,
+    })
+    series.push({
+      name: '\u00b12\u03c3 band',
+      type: 'line',
+      data: upper2.map((u: number | null, i: number) =>
+        u !== null && lower2[i] !== null ? u - lower2[i] : null
+      ),
+      smooth: true,
+      symbol: 'none',
+      lineStyle: { opacity: 0 },
+      areaStyle: { color: 'rgba(239,68,68,0.08)' },
+      stack: 'band2',
+      stackStrategy: 'all',
+      silent: true,
+    })
+  }
+
+  // 1σ band (lighter shaded area)
+  if (hasBands) {
+    series.push({
+      name: '-1\u03c3',
+      type: 'line',
+      data: lower1,
+      smooth: true,
+      symbol: 'none',
+      lineStyle: { opacity: 0 },
+      stack: 'band1',
+      stackStrategy: 'all',
+      silent: true,
+    })
+    series.push({
+      name: '\u00b11\u03c3 band',
+      type: 'line',
+      data: upper1.map((u: number | null, i: number) =>
+        u !== null && lower1[i] !== null ? u - lower1[i] : null
+      ),
+      smooth: true,
+      symbol: 'none',
+      lineStyle: { opacity: 0 },
+      areaStyle: { color: 'rgba(251,191,36,0.12)' },
+      stack: 'band1',
+      stackStrategy: 'all',
+      silent: true,
+    })
+  }
+
+  // Mean line
+  if (hasBands) {
+    series.push({
+      name: 'Mean',
+      type: 'line',
+      data: meanLine,
+      smooth: true,
+      symbol: 'none',
+      lineStyle: { color: '#94a3b8', width: 1, type: 'dashed' },
+      silent: true,
+    })
+  }
+
+  // Price line (on top)
+  series.push({
+    name: 'Price',
+    type: 'line',
+    data: vals,
+    smooth: true,
+    symbol: 'none',
+    lineStyle: { color: '#3b82f6', width: 2 },
+    areaStyle: {
+      color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+        { offset: 0, color: 'rgba(59,130,246,0.3)' },
+        { offset: 1, color: 'rgba(59,130,246,0)' },
+      ]),
+    },
+    z: 10,
+  })
+
   chartInstance.setOption({
-    tooltip: { trigger: 'axis' },
+    tooltip: {
+      trigger: 'axis',
+      formatter: (params: any[]) => {
+        const visible = params.filter((p: any) => p.value != null)
+        if (visible.length === 0) return ''
+        let html = `<strong>${visible[0].axisValueLabel}</strong><br/>`
+        for (const p of visible) {
+          if (p.seriesName.startsWith('-')) continue  // skip lower band base
+          html += `${p.marker} ${p.seriesName}: ${typeof p.value === 'number' ? '$' + p.value.toFixed(2) : p.value}<br/>`
+        }
+        return html
+      },
+    },
     grid: { left: 60, right: 20, top: 20, bottom: 30 },
     xAxis: { type: 'category', data: times, axisLabel: { formatter: (v: string) => v.slice(5, 10) } },
     yAxis: { type: 'value', scale: true },
-    series: [{
-      type: 'line',
-      data: vals,
-      smooth: true,
-      symbol: 'none',
-      lineStyle: { color: '#3b82f6', width: 2 },
-      areaStyle: {
-        color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-          { offset: 0, color: 'rgba(59,130,246,0.3)' },
-          { offset: 1, color: 'rgba(59,130,246,0)' },
-        ]),
-      },
-    }],
+    series,
   })
 }
 
@@ -280,6 +453,116 @@ function registerSparkline(el: HTMLElement | null, symbol: string) {
   sparklineInstances.set(symbol, chart)
 }
 
+// --- Supply Trends ---
+function trendIcon(direction: string): string {
+  if (direction === 'growing') return 'pi pi-arrow-up-right'
+  if (direction === 'declining') return 'pi pi-arrow-down-right'
+  return 'pi pi-minus'
+}
+
+async function fetchTrends() {
+  trendLoading.value = true
+  try {
+    // Fetch trend for each displayed commodity (first 8)
+    const commodities = filteredPrices.value.slice(0, 8).map(p => p.commodity)
+    const results = await Promise.allSettled(
+      commodities.map(async (commodity: string) => {
+        const data = await apiFetch(`/commodities/flows/${commodity}/trend`, { days: '90' })
+        return {
+          commodity,
+          direction: data.direction || 'stable',
+          history: data.history || [],
+          prediction: data.prediction || [],
+        } as TrendItem
+      })
+    )
+    trendData.value = results
+      .filter((r): r is PromiseFulfilledResult<TrendItem> => r.status === 'fulfilled')
+      .map(r => r.value)
+  } catch {
+    trendData.value = []
+  } finally {
+    trendLoading.value = false
+  }
+}
+
+function registerTrendChart(el: HTMLElement | null, commodity: string) {
+  if (!el || trendChartInstances.has(commodity)) return
+  const trend = trendData.value.find(t => t.commodity === commodity)
+  if (!trend) return
+
+  const chart = echarts.init(el)
+  trendChartInstances.set(commodity, chart)
+
+  const historyDates = trend.history.map(d => d.date)
+  const historyVols = trend.history.map(d => d.volume)
+  const predDates = trend.prediction.map(d => d.date)
+  const predVols = trend.prediction.map(d => d.volume)
+
+  const allDates = [...historyDates, ...predDates]
+  // For the prediction series, pad with nulls for history portion
+  const predSeries = [...Array(historyDates.length).fill(null), ...predVols]
+  // Connect the lines: last history value = first prediction value
+  if (historyVols.length > 0 && predVols.length > 0) {
+    predSeries[historyDates.length - 1] = historyVols[historyVols.length - 1]
+  }
+  const historySeries = [...historyVols, ...Array(predDates.length).fill(null)]
+
+  chart.setOption({
+    grid: { left: 40, right: 10, top: 10, bottom: 20 },
+    tooltip: { trigger: 'axis' },
+    xAxis: {
+      type: 'category',
+      data: allDates,
+      axisLabel: { formatter: (v: string) => v.slice(5, 10), fontSize: 10, color: '#64748b' },
+      axisLine: { lineStyle: { color: '#334155' } },
+    },
+    yAxis: {
+      type: 'value',
+      scale: true,
+      axisLabel: { fontSize: 10, color: '#64748b' },
+      splitLine: { lineStyle: { color: '#1e293b' } },
+    },
+    series: [
+      {
+        name: 'Volume',
+        type: 'line',
+        data: historySeries,
+        smooth: true,
+        symbol: 'none',
+        lineStyle: { color: '#3b82f6', width: 2 },
+        areaStyle: {
+          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+            { offset: 0, color: 'rgba(59,130,246,0.2)' },
+            { offset: 1, color: 'rgba(59,130,246,0)' },
+          ]),
+        },
+      },
+      {
+        name: 'Prediction',
+        type: 'line',
+        data: predSeries,
+        smooth: true,
+        symbol: 'none',
+        lineStyle: { color: '#a78bfa', width: 2, type: 'dashed' },
+        areaStyle: {
+          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+            { offset: 0, color: 'rgba(167,139,250,0.1)' },
+            { offset: 1, color: 'rgba(167,139,250,0)' },
+          ]),
+        },
+      },
+    ],
+  })
+}
+
+// Refetch trends when prices load
+watch(filteredPrices, (val) => {
+  if (val.length > 0 && trendData.value.length === 0) {
+    fetchTrends()
+  }
+})
+
 onMounted(() => {
   fetchPrices()
   pollInterval = setInterval(fetchPrices, 60_000)
@@ -290,6 +573,8 @@ onUnmounted(() => {
   if (chartInstance) chartInstance.dispose()
   sparklineInstances.forEach(c => c.dispose())
   sparklineInstances.clear()
+  trendChartInstances.forEach(c => c.dispose())
+  trendChartInstances.clear()
 })
 </script>
 
@@ -343,4 +628,44 @@ onUnmounted(() => {
 .skeleton-bar { height: 40px; background: var(--bg-hover, #2a2a3e); border-radius: 4px; }
 
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+
+/* Supply Trends */
+.trends-section { padding: 1.5rem; margin-top: 1.5rem; }
+.trends-header { margin-bottom: 1rem; }
+.trends-header h2 { font-size: 1.1rem; font-weight: 600; margin-bottom: 0.25rem; }
+.trends-subtitle { font-size: 0.8rem; }
+
+.trends-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1rem; }
+
+.trend-card {
+  background: var(--bg-card, rgba(15,23,42,0.6));
+  border: 1px solid var(--border-color, #2a2a3e);
+  border-radius: 8px;
+  padding: 0.75rem;
+  transition: border-color 0.2s;
+}
+.trend-card:hover { border-color: var(--accent, #3b82f6); }
+
+.trend-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+.trend-commodity { font-weight: 600; font-size: 0.9rem; }
+
+.trend-badge {
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 0.15rem 0.5rem;
+  border-radius: 9999px;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+.trend-growing { background: rgba(34,197,94,0.15); color: #4ade80; }
+.trend-declining { background: rgba(239,68,68,0.15); color: #f87171; }
+.trend-stable { background: rgba(148,163,184,0.15); color: #94a3b8; }
+
+.trend-chart-container { height: 120px; }
 </style>

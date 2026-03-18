@@ -3,6 +3,7 @@
 - GET /commodities/prices             — latest prices
 - GET /commodities/prices/{commodity}/history — price history
 - GET /commodities/flows              — trade flows as GeoJSON
+- GET /commodities/flows/{commodity}/trend — supply trend analysis
 """
 
 from typing import Any
@@ -11,6 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from analytics.supply_trend import get_supply_trend
 from dependencies import get_db
 from middleware.auth import require_auth
 from middleware.rate_limit import check_api_rate_limit
@@ -199,3 +201,24 @@ async def get_trade_flows(
         "type": "FeatureCollection",
         "features": features,
     }
+
+
+@router.get("/flows/{commodity}/trend")
+async def get_commodity_trend(
+    commodity: str,
+    origin: str | None = Query(None, description="ISO 3166-1 alpha-2 origin country"),
+    destination: str | None = Query(None, description="ISO 3166-1 alpha-2 destination country"),
+    user: dict[str, Any] = Depends(check_api_rate_limit),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get supply trend analysis for a commodity.
+
+    Returns rolling volume averages (7d/30d/90d), trend direction
+    (growing/declining/stable), and a 30-day volume prediction.
+    """
+    result = await get_supply_trend(db, commodity, origin=origin, destination=destination)
+
+    if result["data_points"] == 0:
+        raise HTTPException(status_code=404, detail=f"No trade flow data found for '{commodity}'")
+
+    return {"data": result}

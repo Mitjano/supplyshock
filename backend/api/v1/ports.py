@@ -1,17 +1,22 @@
 """Port endpoints — /api/v1/ports/*
 
-- GET /ports              — list/filter ports (bbox, major, commodity)
-- GET /ports/{id}         — port detail
-- GET /ports/{id}/vessels — vessels currently in port geofence
+- GET /ports                   — list/filter ports (bbox, major, commodity)
+- GET /ports/{id}              — port detail
+- GET /ports/{id}/vessels      — vessels currently in port geofence
+- GET /ports/{id}/congestion   — port congestion metrics
+- GET /ports/{id}/analytics    — port performance analytics (Issue #72)
+- GET /ports/ranking           — port ranking by congestion/throughput (Issue #72)
 """
 
+import json
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from dependencies import get_db
+from analytics.port_congestion import calculate_port_congestion
+from dependencies import get_db, get_redis
 from geo.geofence import get_vessels_in_port
 from middleware.auth import require_auth
 from middleware.rate_limit import check_api_rate_limit
@@ -101,6 +106,60 @@ async def list_ports(
     }
 
 
+# ── Issue #72 — Port Ranking (must be before /{port_id} to avoid path collision) ──
+
+@router.get("/ranking")
+async def get_port_ranking(
+    by: str = Query("congestion", description="Rank by: congestion, throughput, dwell_time"),
+    limit: int = Query(20, le=100),
+    user: dict[str, Any] = Depends(check_api_rate_limit),
+    db: AsyncSession = Depends(get_db),
+):
+    """Rank ports by congestion, throughput, or dwell time."""
+    result = await db.execute(
+        text("""
+            SELECT DISTINCT ON (pa.port_id)
+                pa.port_id, p.name, p.country_code, p.region,
+                pa.dwell_time_median_hours, pa.turnaround_hours,
+                pa.queue_length, pa.throughput_vessels, pa.vessel_count,
+                pa.avg_wait_hours, pa.calculated_at
+            FROM port_analytics pa
+            JOIN ports p ON pa.port_id = p.id
+            ORDER BY pa.port_id, pa.calculated_at DESC
+        """),
+    )
+    rows = result.mappings().all()
+
+    # Sort in Python since DISTINCT ON prevents direct ORDER BY on analytics columns
+    sort_key_map = {
+        "congestion": lambda r: r["queue_length"] or 0,
+        "throughput": lambda r: r["throughput_vessels"] or 0,
+        "dwell_time": lambda r: r["dwell_time_median_hours"] or 0,
+    }
+    sort_fn = sort_key_map.get(by, sort_key_map["congestion"])
+    sorted_rows = sorted(rows, key=sort_fn, reverse=True)[:limit]
+
+    return {
+        "data": [
+            {
+                "port_id": str(r["port_id"]),
+                "name": r["name"],
+                "country_code": r["country_code"],
+                "region": r["region"],
+                "dwell_time_median_hours": float(r["dwell_time_median_hours"]) if r["dwell_time_median_hours"] else None,
+                "turnaround_hours": float(r["turnaround_hours"]) if r["turnaround_hours"] else None,
+                "queue_length": r["queue_length"],
+                "throughput_vessels": r["throughput_vessels"],
+                "vessel_count": r["vessel_count"],
+                "avg_wait_hours": float(r["avg_wait_hours"]) if r["avg_wait_hours"] else None,
+                "calculated_at": r["calculated_at"].isoformat() if hasattr(r["calculated_at"], "isoformat") else str(r["calculated_at"]),
+            }
+            for r in sorted_rows
+        ],
+        "meta": {"ranked_by": by, "limit": limit},
+    }
+
+
 @router.get("/{port_id}")
 async def get_port(
     port_id: str,
@@ -163,4 +222,114 @@ async def list_vessels_in_port(
     return {
         "data": vessels,
         "meta": {"port_id": port_id, "vessel_count": len(vessels)},
+    }
+
+
+@router.get("/{port_id}/congestion")
+async def get_port_congestion(
+    port_id: str,
+    user: dict[str, Any] = Depends(check_api_rate_limit),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get real-time congestion metrics for a port.
+
+    Returns cached data when available (refreshed every 15 min),
+    otherwise computes on-the-fly.
+    """
+    # Verify port exists
+    port_check = await db.execute(
+        text("SELECT id, name FROM ports WHERE id = :port_id"),
+        {"port_id": port_id},
+    )
+    port = port_check.mappings().first()
+    if not port:
+        raise HTTPException(status_code=404, detail="Port not found")
+
+    # Try Redis cache first
+    try:
+        redis = await get_redis()
+        cached = await redis.get(f"port:{port_id}:congestion")
+        if cached:
+            data = json.loads(cached)
+            data["source"] = "cache"
+            return {"data": data, "meta": {"port_id": port_id, "port_name": port["name"]}}
+    except Exception:
+        pass
+
+    # Compute on-the-fly
+    data = await calculate_port_congestion(db, port_id)
+    data["source"] = "live"
+    return {"data": data, "meta": {"port_id": port_id, "port_name": port["name"]}}
+
+
+# ── Issue #72 — Port Analytics ──
+
+@router.get("/{port_id}/analytics")
+async def get_port_analytics(
+    port_id: str,
+    period: str = Query("30d", description="Period: 7d, 30d, 90d"),
+    user: dict[str, Any] = Depends(check_api_rate_limit),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get performance analytics for a specific port."""
+    # Verify port exists
+    port_check = await db.execute(
+        text("SELECT id, name FROM ports WHERE id = :port_id"),
+        {"port_id": port_id},
+    )
+    port = port_check.mappings().first()
+    if not port:
+        raise HTTPException(status_code=404, detail="Port not found")
+
+    interval_map = {"7d": "7 days", "30d": "30 days", "90d": "90 days"}
+    interval = interval_map.get(period, "30 days")
+
+    result = await db.execute(
+        text(f"""
+            SELECT dwell_time_median_hours, turnaround_hours,
+                   queue_length, throughput_vessels, vessel_count,
+                   avg_wait_hours, period_start, calculated_at
+            FROM port_analytics
+            WHERE port_id = :port_id
+              AND period_start >= NOW() - INTERVAL '{interval}'
+            ORDER BY period_start DESC
+        """),
+        {"port_id": port_id},
+    )
+    rows = result.mappings().all()
+
+    if not rows:
+        return {
+            "data": None,
+            "meta": {"port_id": port_id, "port_name": port["name"], "period": period},
+            "message": "No analytics data available for this period",
+        }
+
+    # Latest snapshot
+    latest = rows[0]
+
+    # Historical trend
+    history = [
+        {
+            "date": r["period_start"].isoformat() if hasattr(r["period_start"], "isoformat") else str(r["period_start"]),
+            "dwell_time_median_hours": float(r["dwell_time_median_hours"]) if r["dwell_time_median_hours"] else None,
+            "queue_length": r["queue_length"],
+            "throughput_vessels": r["throughput_vessels"],
+            "vessel_count": r["vessel_count"],
+        }
+        for r in rows
+    ]
+
+    return {
+        "data": {
+            "dwell_time_median_hours": float(latest["dwell_time_median_hours"]) if latest["dwell_time_median_hours"] else None,
+            "turnaround_hours": float(latest["turnaround_hours"]) if latest["turnaround_hours"] else None,
+            "queue_length": latest["queue_length"],
+            "throughput_vessels": latest["throughput_vessels"],
+            "vessel_count": latest["vessel_count"],
+            "avg_wait_hours": float(latest["avg_wait_hours"]) if latest["avg_wait_hours"] else None,
+            "calculated_at": latest["calculated_at"].isoformat() if hasattr(latest["calculated_at"], "isoformat") else str(latest["calculated_at"]),
+        },
+        "history": history,
+        "meta": {"port_id": port_id, "port_name": port["name"], "period": period},
     }

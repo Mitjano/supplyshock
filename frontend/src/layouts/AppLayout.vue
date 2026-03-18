@@ -151,6 +151,9 @@
 
     <!-- Global search modal -->
     <GlobalSearch ref="globalSearchRef" />
+
+    <!-- AI Chat panel -->
+    <ChatPanel />
   </div>
 </template>
 
@@ -161,6 +164,7 @@ import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '@/stores/useAuthStore'
 import { useLocalePath } from '@/composables/useLocalePath'
 import GlobalSearch from '@/components/ui/GlobalSearch.vue'
+import ChatPanel from '@/components/ChatPanel.vue'
 import Avatar from 'primevue/avatar'
 
 const { t } = useI18n()
@@ -199,6 +203,8 @@ const currentPageTitle = computed(() => {
     '/simulations': t('nav.simulations'),
     '/reports': t('nav.reports'),
     '/settings': t('nav.settings'),
+    '/analytics': t('nav.analytics'),
+    '/fleet': t('nav.fleet'),
   }
   return map[cleanPath.value] || 'Page'
 })
@@ -220,6 +226,7 @@ const navSections = computed(() => [
     titleKey: 'layout.markets',
     items: [
       { key: 'commodities', icon: 'pi-chart-line', route: localePath('/commodities'), label: () => t('nav.commodities') },
+      { key: 'analytics', icon: 'pi-chart-bar', route: localePath('/analytics'), label: () => t('nav.analytics') },
     ]
   },
   {
@@ -227,6 +234,8 @@ const navSections = computed(() => [
     items: [
       { key: 'alerts', icon: 'pi-bell', route: localePath('/alerts'), label: () => t('nav.alerts'), badge: alertCount },
       { key: 'bottlenecks', icon: 'pi-exclamation-triangle', route: localePath('/bottlenecks'), label: () => t('nav.bottlenecks') },
+      { key: 'compliance', icon: 'pi-shield', route: localePath('/compliance'), label: () => t('nav.compliance') },
+      { key: 'fleet', icon: 'pi-truck', route: localePath('/fleet'), label: () => t('nav.fleet') },
     ]
   },
   {

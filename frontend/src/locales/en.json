@@ -8,7 +8,9 @@
     "fleet": "Fleet",
     "simulations": "Simulations",
     "reports": "Reports",
-    "settings": "Settings"
+    "settings": "Settings",
+    "compliance": "Compliance",
+    "analytics": "Analytics"
   },
   "layout": {
     "overview": "OVERVIEW",
@@ -384,6 +386,158 @@
       "dateFrom": "Date From",
       "dateTo": "Date To"
     }
+  },
+  "analytics": {
+    "congestion": {
+      "title": "Port Congestion",
+      "autoRefresh": "Auto-refresh 5 min",
+      "waitingVessels": "{count} vessels waiting",
+      "risk": {
+        "normal": "Normal",
+        "elevated": "Elevated",
+        "high": "High",
+        "critical": "Critical"
+      }
+    },
+    "trend": {
+      "title": "Supply Trends",
+      "subtitle": "90-day volume with predicted trend",
+      "growing": "Growing",
+      "declining": "Declining",
+      "stable": "Stable",
+      "volume": "Volume",
+      "prediction": "Prediction"
+    },
+    "prediction": {
+      "eta": "Predicted ETA",
+      "confidence": "Confidence",
+      "delayRisk": "Delay Risk",
+      "delayEstimate": "Est. Delay",
+      "low": "Low",
+      "medium": "Medium",
+      "high": "High"
+    },
+    "dashboard": {
+      "title": "Analytics Dashboard",
+      "tabs": {
+        "cot": "COT",
+        "inventories": "Inventories",
+        "cracks": "Crack Spreads",
+        "correlations": "Correlations",
+        "seasonal": "Seasonal",
+        "forwardCurves": "Forward Curves",
+        "balance": "Supply/Demand",
+        "ports": "Ports"
+      }
+    },
+    "cot": {
+      "commercial": "Commercial Net",
+      "managedMoney": "Managed Money Net",
+      "price": "Price",
+      "contracts": "Contracts"
+    },
+    "inventory": {
+      "fiveYearRange": "5-Year Range",
+      "fiveYearAvg": "5-Year Avg",
+      "previousYear": "Previous Year",
+      "currentYear": "Current Year"
+    },
+    "cracks": {
+      "seasonalOverlay": "Seasonal overlay",
+      "seasonal321": "Seasonal 3-2-1"
+    },
+    "seasonal": {
+      "median": "Median"
+    },
+    "forwardCurve": {
+      "today": "Today",
+      "oneWeekAgo": "1 Week Ago",
+      "oneMonthAgo": "1 Month Ago",
+      "expiry": "Expiry Month",
+      "contango": "Contango",
+      "backwardation": "Backwardation",
+      "flat": "Flat"
+    },
+    "balance": {
+      "production": "Production",
+      "consumption": "Consumption",
+      "endingStocks": "Ending Stocks",
+      "stocks": "Stocks (mb)"
+    },
+    "fleet": {
+      "title": "Fleet Analytics",
+      "owner": "Owner",
+      "vesselCount": "Vessels",
+      "totalDwt": "Total DWT",
+      "utilization": "Utilization",
+      "vesselName": "Vessel Name",
+      "type": "Type",
+      "flag": "Flag",
+      "status": "Status"
+    },
+    "port": {
+      "vessels": "Vessels",
+      "waitDays": "Avg Wait (days)",
+      "throughput": "Throughput",
+      "rankings": "Port Rankings",
+      "portName": "Port",
+      "congestionIdx": "Congestion Index"
+    }
+  },
+  "chat": {
+    "title": "SupplyShock AI",
+    "placeholder": "Ask about supply chains, commodities, alerts...",
+    "emptyTitle": "Ask SupplyShock AI",
+    "emptyDesc": "Get insights on commodity prices, active alerts, port congestion, and more.",
+    "messagesUsed": "today",
+    "clear": "Clear chat",
+    "errorGeneric": "An error occurred. Please try again."
+  },
+  "compliance": {
+    "title": "Compliance Dashboard",
+    "subtitle": "Sanctions screening, AIS gap detection, and STS transfer monitoring",
+    "allSeverities": "All Severities",
+    "tabs": {
+      "sanctions": "Sanctions",
+      "aisGaps": "AIS Gaps",
+      "stsEvents": "STS Events"
+    },
+    "vesselName": "Vessel Name",
+    "sanctionSource": "Source",
+    "program": "Program",
+    "matchType": "Match Type",
+    "severity": {
+      "label": "Severity",
+      "critical": "Critical",
+      "high": "High",
+      "medium": "Medium",
+      "low": "Low"
+    },
+    "noFlagged": "No sanctioned vessels detected",
+    "noAisGaps": "No AIS gap events found",
+    "noStsEvents": "No STS transfer events detected",
+    "lastSeen": "Last Seen",
+    "lastSeenTime": "Last Seen Time",
+    "reappeared": "Reappeared",
+    "reappearedTime": "Reappeared Time",
+    "gapHours": "Gap (hours)",
+    "distanceNm": "Distance (nm)",
+    "vesselA": "Vessel A",
+    "vesselB": "Vessel B",
+    "location": "Location",
+    "detectedAt": "Detected At",
+    "ladenStatusA": "Laden (A)",
+    "ladenStatusB": "Laden (B)"
+  },
+  "weather": {
+    "title": "Weather",
+    "toggle": "Toggle weather overlay",
+    "waveHeight": "Wave Height",
+    "wavePeriod": "Wave Period",
+    "waveDirection": "Wave Direction",
+    "windSpeed": "Wind Speed",
+    "windDirection": "Wind Direction",
+    "stormWarning": "Storm Warning"
   },
   "search": {
     "placeholder": "Search vessels, ports, commodities...",
