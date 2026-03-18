@@ -1,74 +1,79 @@
-"""Clerk JWT verification via JWKS.
+"""Clerk JWT verification.
 
-Fetches Clerk's public keys once, caches them, and verifies
-incoming Bearer tokens on every protected request.
+Verifies JWTs issued by Clerk using JWKS (JSON Web Key Set).
+Clerk publishes its public keys at the JWKS endpoint.
 """
 
-import time
-from typing import Any
+import logging
+from functools import lru_cache
 
-import httpx
 import jwt
-from jwt import PyJWKClient
+import requests
 
 from config import settings
 
-# Default JWKS URL placeholder — overridden by CLERK_JWKS_URL env var or
-# derived at runtime from the publishable key when available.
-_DEFAULT_JWKS_URL = "https://clerk.example.com/.well-known/jwks.json"
-
-
-def _derive_jwks_url() -> str:
-    """Build Clerk JWKS URL from publishable key (pk_test_xxx or pk_live_xxx)."""
-    pk = settings.CLERK_PUBLISHABLE_KEY
-    if pk and "_" in pk:
-        parts = pk.split("_")
-        if len(parts) >= 3:
-            # pk_test_abcdef... → abcdef...
-            instance_id = "_".join(parts[2:])
-            return f"https://{instance_id}.clerk.accounts.dev/.well-known/jwks.json"
-    return _DEFAULT_JWKS_URL
-
-# Cache JWKS client (handles key rotation automatically)
-_jwks_client: PyJWKClient | None = None
-
-
-def _get_jwks_client() -> PyJWKClient:
-    global _jwks_client
-    if _jwks_client is None:
-        # Clerk's JWKS URL — prefer explicit env var, fall back to derived
-        jwks_url = settings.CLERK_JWKS_URL if settings.CLERK_JWKS_URL else _derive_jwks_url()
-        _jwks_client = PyJWKClient(jwks_url, cache_keys=True, lifespan=3600)
-    return _jwks_client
+logger = logging.getLogger("auth.clerk")
 
 
 class ClerkTokenError(Exception):
-    """Raised when a Clerk JWT cannot be verified."""
+    """Raised when Clerk JWT verification fails."""
+    pass
 
 
-def verify_clerk_token(token: str) -> dict[str, Any]:
+@lru_cache(maxsize=1)
+def _get_jwks_client() -> jwt.PyJWKClient:
+    """Get cached JWKS client for Clerk token verification."""
+    jwks_url = settings.CLERK_JWKS_URL
+    if not jwks_url and settings.CLERK_PUBLISHABLE_KEY:
+        # Derive JWKS URL from publishable key
+        # Format: pk_test_xxx or pk_live_xxx
+        # JWKS URL: https://{instance}.clerk.accounts.dev/.well-known/jwks.json
+        # For simplicity, use the Clerk Frontend API
+        pk = settings.CLERK_PUBLISHABLE_KEY
+        if pk.startswith("pk_"):
+            # Extract the instance identifier
+            parts = pk.split("_", 2)
+            if len(parts) >= 3:
+                instance_id = parts[2]
+                jwks_url = f"https://{instance_id}.clerk.accounts.dev/.well-known/jwks.json"
+
+    if not jwks_url:
+        raise ClerkTokenError("CLERK_JWKS_URL not configured")
+
+    return jwt.PyJWKClient(jwks_url, cache_keys=True)
+
+
+def verify_clerk_token(token: str) -> dict:
     """Verify a Clerk JWT and return the decoded payload.
 
-    Returns dict with at minimum: sub (clerk_user_id), email, exp, iat.
-    Raises ClerkTokenError on any verification failure.
+    Args:
+        token: Raw JWT string from Authorization header.
+
+    Returns:
+        Decoded JWT payload dict (contains sub, email, etc.).
+
+    Raises:
+        ClerkTokenError: If token is invalid, expired, or verification fails.
     """
     try:
-        client = _get_jwks_client()
-        signing_key = client.get_signing_key_from_jwt(token)
+        jwks_client = _get_jwks_client()
+        signing_key = jwks_client.get_signing_key_from_jwt(token)
+
         payload = jwt.decode(
             token,
             signing_key.key,
             algorithms=["RS256"],
             options={
                 "verify_exp": True,
-                "verify_iat": True,
-                "require": ["sub", "exp", "iat"],
+                "verify_aud": False,  # Clerk doesn't always set aud
             },
         )
         return payload
+
     except jwt.ExpiredSignatureError:
-        raise ClerkTokenError("Token has expired")
+        raise ClerkTokenError("Token expired")
     except jwt.InvalidTokenError as e:
         raise ClerkTokenError(f"Invalid token: {e}")
     except Exception as e:
-        raise ClerkTokenError(f"Token verification failed: {e}")
+        logger.error("Clerk token verification failed: %s", e)
+        raise ClerkTokenError("Token verification failed")

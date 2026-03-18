@@ -4,108 +4,118 @@
 - POST /billing/portal    — create Stripe Customer Portal session
 """
 
+import logging
 from typing import Any
 
-import stripe
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import settings
-from dependencies import get_db
+from dependencies import get_db, resolve_user_id
 from middleware.auth import require_auth
-from middleware.rate_limit import check_api_rate_limit
+
+logger = logging.getLogger("billing")
 
 router = APIRouter(prefix="/billing", tags=["Billing"])
 
-stripe.api_key = settings.STRIPE_SECRET_KEY
-
-PLAN_PRICES: dict[str, str] = {
-    "pro": "price_pro_monthly",
+# Stripe Price IDs (configured in Stripe dashboard)
+PLAN_PRICES = {
+    "pro": "price_pro_monthly",       # Replace with real Stripe price IDs
     "business": "price_business_monthly",
-    "enterprise": "price_enterprise_monthly",
 }
 
 
 class CheckoutRequest(BaseModel):
-    plan: str  # "pro", "business", "enterprise"
-    success_url: str | None = None
-    cancel_url: str | None = None
+    plan: str = Field(..., description="Target plan: pro, business")
+
+
+class PortalRequest(BaseModel):
+    return_url: str | None = Field(None, description="URL to return to after portal")
 
 
 @router.post("/checkout")
-async def create_checkout_session(
+async def create_checkout(
     body: CheckoutRequest,
-    user: dict[str, Any] = Depends(check_api_rate_limit),
+    user: dict[str, Any] = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
     """Create a Stripe Checkout session for plan upgrade."""
+    import stripe
+
+    if not settings.STRIPE_SECRET_KEY:
+        raise HTTPException(status_code=503, detail="Billing not configured")
+
+    stripe.api_key = settings.STRIPE_SECRET_KEY
+
     if body.plan not in PLAN_PRICES:
-        raise HTTPException(400, detail={"error": "Invalid plan", "code": "INVALID_PLAN"})
+        raise HTTPException(status_code=400, detail=f"Invalid plan: {body.plan}")
 
+    user_id = await resolve_user_id(user, db)
     clerk_id = user.get("sub")
-
-    # Get user from DB
-    result = await db.execute(
-        text("SELECT id, email, stripe_customer_id, plan FROM users WHERE clerk_user_id = :cid"),
-        {"cid": clerk_id},
-    )
-    user_row = result.mappings().first()
-    if not user_row:
-        raise HTTPException(404, detail={"error": "User not found", "code": "USER_NOT_FOUND"})
-
-    if user_row["plan"] == body.plan:
-        raise HTTPException(400, detail={"error": "Already on this plan", "code": "SAME_PLAN"})
+    email = user.get("email", "")
 
     # Get or create Stripe customer
-    customer_id = user_row["stripe_customer_id"]
-    if not customer_id:
+    result = await db.execute(
+        text("SELECT stripe_customer_id, email FROM users WHERE id = :uid"),
+        {"uid": user_id},
+    )
+    row = result.mappings().first()
+    stripe_customer_id = row["stripe_customer_id"] if row else None
+    email = row["email"] if row else email
+
+    if not stripe_customer_id:
         customer = stripe.Customer.create(
-            email=user_row["email"],
-            metadata={"clerk_user_id": clerk_id},
+            email=email,
+            metadata={"clerk_user_id": clerk_id, "user_id": user_id},
         )
-        customer_id = customer.id
+        stripe_customer_id = customer.id
         await db.execute(
-            text("UPDATE users SET stripe_customer_id = :cid WHERE clerk_user_id = :clerk_id"),
-            {"cid": customer_id, "clerk_id": clerk_id},
+            text("UPDATE users SET stripe_customer_id = :sid WHERE id = :uid"),
+            {"sid": stripe_customer_id, "uid": user_id},
         )
         await db.commit()
 
-    success_url = body.success_url or f"{settings.FRONTEND_URL}/settings?billing=success"
-    cancel_url = body.cancel_url or f"{settings.FRONTEND_URL}/settings?billing=cancel"
-
     session = stripe.checkout.Session.create(
-        customer=customer_id,
+        customer=stripe_customer_id,
         mode="subscription",
         line_items=[{"price": PLAN_PRICES[body.plan], "quantity": 1}],
-        success_url=success_url,
-        cancel_url=cancel_url,
-        metadata={"clerk_user_id": clerk_id, "plan": body.plan},
+        success_url=f"{settings.FRONTEND_URL}/settings?checkout=success",
+        cancel_url=f"{settings.FRONTEND_URL}/settings?checkout=cancel",
+        metadata={"user_id": user_id, "plan": body.plan},
     )
 
-    return {"data": {"checkout_url": session.url, "session_id": session.id}}
+    return {"checkout_url": session.url}
 
 
 @router.post("/portal")
-async def create_portal_session(
-    user: dict[str, Any] = Depends(check_api_rate_limit),
+async def create_portal(
+    body: PortalRequest,
+    user: dict[str, Any] = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ):
-    """Create a Stripe Customer Portal session for managing subscription."""
-    clerk_id = user.get("sub")
+    """Create a Stripe Customer Portal session for subscription management."""
+    import stripe
+
+    if not settings.STRIPE_SECRET_KEY:
+        raise HTTPException(status_code=503, detail="Billing not configured")
+
+    stripe.api_key = settings.STRIPE_SECRET_KEY
+
+    user_id = await resolve_user_id(user, db)
 
     result = await db.execute(
-        text("SELECT stripe_customer_id FROM users WHERE clerk_user_id = :cid"),
-        {"cid": clerk_id},
+        text("SELECT stripe_customer_id FROM users WHERE id = :uid"),
+        {"uid": user_id},
     )
-    user_row = result.mappings().first()
-    if not user_row or not user_row["stripe_customer_id"]:
-        raise HTTPException(400, detail={"error": "No billing account", "code": "NO_BILLING"})
+    row = result.mappings().first()
+    if not row or not row["stripe_customer_id"]:
+        raise HTTPException(status_code=400, detail="No billing account found")
 
     session = stripe.billing_portal.Session.create(
-        customer=user_row["stripe_customer_id"],
-        return_url=f"{settings.FRONTEND_URL}/settings",
+        customer=row["stripe_customer_id"],
+        return_url=body.return_url or f"{settings.FRONTEND_URL}/settings",
     )
 
-    return {"data": {"portal_url": session.url}}
+    return {"portal_url": session.url}

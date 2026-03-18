@@ -1,218 +1,259 @@
-"""GDELT news watcher — monitors global news for commodity supply chain disruptions.
+"""GDELT GKG news watcher — supply chain alert generation.
 
-Polls GDELT GKG API every 15 minutes, classifies events by commodity and severity,
-deduplicates by source_url, and inserts into alert_events table.
+Polls GDELT Global Knowledge Graph API every 15 minutes.
+Classifies events by commodity and severity.
+Deduplicates by source_url to avoid repeat alerts.
 
-NOTE: This module requires a unique index on alert_events.source_url for proper
-ON CONFLICT dedup. Add via migration:
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_alert_events_source_url
-    ON alert_events (source_url) WHERE source_url IS NOT NULL;
+Called by Celery beat task `ingest_gdelt_alerts`.
 """
 
 import json
 import logging
-import re
 from datetime import datetime, timezone
 
-import httpx
 import psycopg2
-from psycopg2.extras import execute_values
+import requests
 
 from config import settings
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("gdelt")
 
 GDELT_GKG_URL = "https://api.gdeltproject.org/api/v2/doc/doc"
 
-# Keywords that map to commodities
-COMMODITY_KEYWORDS = {
-    "crude_oil": ["oil price", "crude oil", "petroleum", "OPEC", "oil supply", "oil embargo", "oil pipeline", "refinery"],
-    "coal": ["coal mine", "coal price", "coal export", "thermal coal", "coal supply"],
-    "iron_ore": ["iron ore", "steel production", "iron ore price", "mining"],
-    "copper": ["copper price", "copper mine", "copper supply", "copper shortage"],
-    "lng": ["LNG", "natural gas", "gas pipeline", "gas supply", "liquefied natural gas"],
-    "wheat": ["wheat price", "wheat export", "wheat supply", "grain shortage", "wheat harvest", "wheat shipment"],
-    "soybeans": ["soybean price", "soybeans export", "soybean supply", "soybean harvest", "soybean shipment"],
-    "aluminium": ["aluminium price", "aluminum price", "aluminium supply", "aluminum supply", "aluminium smelter", "aluminum smelter"],
-    "nickel": ["nickel price", "nickel mine", "nickel supply", "nickel shortage"],
-    "palladium": ["palladium price", "palladium supply", "palladium shortage", "PGM supply"],
+# Keywords mapped to commodities
+COMMODITY_KEYWORDS: dict[str, list[str]] = {
+    "crude_oil": [
+        "crude oil", "oil price", "oil supply", "OPEC", "petroleum",
+        "oil pipeline", "oil tanker", "refinery", "oil export",
+        "Brent crude", "WTI crude", "oil production",
+    ],
+    "lng": [
+        "LNG", "liquefied natural gas", "natural gas", "gas pipeline",
+        "gas export", "Henry Hub", "gas terminal",
+    ],
+    "coal": [
+        "coal", "thermal coal", "coking coal", "coal export", "coal mine",
+        "coal port", "Newcastle coal", "Richards Bay coal",
+    ],
+    "iron_ore": [
+        "iron ore", "iron ore price", "iron ore export", "iron ore mine",
+        "Pilbara", "Port Hedland",
+    ],
+    "copper": [
+        "copper", "copper mine", "copper price", "copper supply",
+        "Antofagasta", "Escondida",
+    ],
+    "wheat": [
+        "wheat", "grain", "wheat export", "grain shipment",
+        "Black Sea grain", "wheat price",
+    ],
+    "soybeans": ["soybean", "soy", "soybean export", "soy price"],
+    "aluminium": ["aluminium", "aluminum", "alumina", "bauxite"],
+    "nickel": ["nickel", "nickel mine", "nickel price"],
 }
 
-# Regions/locations that indicate supply chain relevance
-SUPPLY_CHAIN_KEYWORDS = [
-    "supply chain", "disruption", "shortage", "embargo", "sanctions",
-    "port closure", "strike", "blockade", "chokepoint", "strait",
-    "Suez", "Hormuz", "Malacca", "Panama Canal", "pipeline",
-    "explosion", "earthquake", "hurricane", "typhoon", "flood",
+# Disruption keywords for severity classification
+CRITICAL_KEYWORDS = [
+    "explosion", "attack", "war", "blockade", "sanctions",
+    "shutdown", "collapse", "emergency", "disaster", "destroyed",
+]
+WARNING_KEYWORDS = [
+    "strike", "flood", "storm", "hurricane", "typhoon", "earthquake",
+    "disruption", "delay", "protest", "closure", "shortage",
+    "drought", "fire", "accident", "spill",
 ]
 
-# GDELT tone score -> severity mapping
-# tone < -5 = critical, -5 to -2 = warning, > -2 = info
-TONE_THRESHOLDS = {"critical": -5.0, "warning": -2.0}
+# Region keywords
+REGION_KEYWORDS: dict[str, list[str]] = {
+    "Middle East": ["Iran", "Iraq", "Saudi", "Qatar", "UAE", "Hormuz", "Yemen", "Houthi"],
+    "Black Sea": ["Ukraine", "Russia", "Odessa", "Novorossiysk", "Black Sea"],
+    "Asia Pacific": ["China", "Japan", "Korea", "Australia", "Singapore", "Malacca"],
+    "Americas": ["United States", "Brazil", "Canada", "Panama Canal", "Gulf of Mexico"],
+    "Europe": ["Europe", "Rotterdam", "Mediterranean", "North Sea", "Bosphorus"],
+    "Africa": ["South Africa", "Richards Bay", "Nigeria", "Suez", "Red Sea"],
+}
 
 
-def _classify_commodity(text: str) -> str | None:
-    """Match article text to a commodity type."""
+def classify_commodity(text: str) -> str | None:
+    """Match article text to a commodity based on keyword presence."""
     text_lower = text.lower()
+    best_match = None
+    best_count = 0
     for commodity, keywords in COMMODITY_KEYWORDS.items():
-        for kw in keywords:
-            if kw.lower() in text_lower:
-                return commodity
-    return None
+        count = sum(1 for kw in keywords if kw.lower() in text_lower)
+        if count > best_count:
+            best_count = count
+            best_match = commodity
+    return best_match if best_count >= 1 else None
 
 
-def _classify_severity(tone: float) -> str:
-    """Map GDELT tone score to severity level."""
-    if tone < TONE_THRESHOLDS["critical"]:
-        return "critical"
-    elif tone < TONE_THRESHOLDS["warning"]:
-        return "warning"
+def classify_severity(text: str) -> str:
+    """Classify severity based on disruption keywords."""
+    text_lower = text.lower()
+    for kw in CRITICAL_KEYWORDS:
+        if kw in text_lower:
+            return "critical"
+    for kw in WARNING_KEYWORDS:
+        if kw in text_lower:
+            return "warning"
     return "info"
 
 
-def _is_supply_chain_relevant(text: str) -> bool:
-    """Check if article mentions supply chain disruption keywords."""
-    text_lower = text.lower()
-    return any(kw.lower() in text_lower for kw in SUPPLY_CHAIN_KEYWORDS)
+def extract_region(text: str) -> str | None:
+    """Extract region from article text."""
+    for region, keywords in REGION_KEYWORDS.items():
+        for kw in keywords:
+            if kw.lower() in text.lower():
+                return region
+    return None
 
 
-def fetch_gdelt_articles() -> list[dict]:
-    """Fetch recent commodity-related articles from GDELT."""
-    query = " OR ".join([
-        "crude oil supply",
-        "coal export",
-        "iron ore shipment",
-        "copper mine",
-        "LNG supply",
-        "commodity disruption",
-        "port closure",
-        "supply chain crisis",
-        "wheat export",
-        "soybean shipment",
-        "aluminium supply",
-        "nickel shortage",
-        "palladium supply",
-    ])
-
-    try:
-        resp = httpx.get(
-            GDELT_GKG_URL,
-            params={
-                "query": query,
-                "mode": "ArtList",
-                "maxrecords": 50,
-                "format": "json",
-                "timespan": "15min",
-            },
-            timeout=20,
-        )
-        resp.raise_for_status()
-        data = resp.json()
-    except Exception as e:
-        logger.warning("GDELT fetch failed: %s", e)
-        return []
-
-    articles = data.get("articles", [])
-    events = []
-
-    for article in articles:
-        title = article.get("title", "")
-        url = article.get("url", "")
-        tone = article.get("tone", 0)
-        seendate = article.get("seendate", "")
-
-        if not title or not url:
-            continue
-
-        # Classify commodity
-        commodity = _classify_commodity(title)
-        if not commodity and not _is_supply_chain_relevant(title):
-            continue
-
-        severity = _classify_severity(float(tone) if tone else 0)
-
-        events.append({
-            "type": "news_event",
-            "severity": severity,
-            "commodity": commodity,
-            "title": title[:500],
-            "body": f"Source: {article.get('domain', 'unknown')}",
-            "source": "gdelt",
-            "source_url": url,
-            "metadata": json.dumps({"tone": tone, "domain": article.get("domain")}),
-            "time": datetime.now(timezone.utc).isoformat(),
-        })
-
-    return events
-
-
-def ingest_gdelt_alerts():
-    """Fetch GDELT articles and insert new alerts (dedup by source_url via ON CONFLICT)."""
-    events = fetch_gdelt_articles()
-    if not events:
-        logger.info("No new GDELT events found")
-        return 0
-
+def ingest_gdelt_alerts() -> dict:
+    """Poll GDELT for supply chain news events and insert into alert_events."""
     conn = psycopg2.connect(settings.DATABASE_URL_SYNC)
-    inserted = 0
-
     try:
-        with conn.cursor() as cur:
-            # Use INSERT ... ON CONFLICT for atomic dedup instead of SELECT-then-INSERT.
-            # Requires unique index on source_url (see module docstring).
-            values = [
-                (
-                    event["type"], event["severity"], event["commodity"],
-                    event["title"], event["body"], event["source"],
-                    event["source_url"], event["metadata"], event["time"],
-                )
-                for event in events
-            ]
+        articles = _fetch_gdelt_articles()
+        logger.info("GDELT returned %d articles", len(articles))
 
-            # Use execute_values with ON CONFLICT to get actually inserted rows
-            cur.execute("BEGIN")
-            for event in events:
+        created = 0
+        skipped = 0
+
+        with conn.cursor() as cur:
+            for article in articles:
+                url = article.get("url", "")
+                title = article.get("title", "")
+                seendate = article.get("seendate", "")
+                source_country = article.get("sourcecountry", "")
+                domain = article.get("domain", "")
+                language = article.get("language", "")
+
+                if not url or not title:
+                    continue
+
+                full_text = f"{title} {domain} {source_country}"
+                commodity = classify_commodity(full_text)
+                if not commodity:
+                    skipped += 1
+                    continue
+
+                severity = classify_severity(full_text)
+                region = extract_region(full_text)
+
+                # Dedup by source_url
+                cur.execute(
+                    "SELECT 1 FROM alert_events WHERE source_url = %s AND time > NOW() - INTERVAL '7 days' LIMIT 1",
+                    (url,),
+                )
+                if cur.fetchone():
+                    skipped += 1
+                    continue
+
+                event_time = datetime.now(timezone.utc)
+                if seendate:
+                    try:
+                        event_time = datetime.strptime(
+                            seendate[:15], "%Y%m%dT%H%M%S"
+                        ).replace(tzinfo=timezone.utc)
+                    except (ValueError, IndexError):
+                        pass
+
+                body = f"Source: {domain}"
+                if language:
+                    body += f" ({language})"
+
+                metadata = {
+                    "domain": domain,
+                    "source_country": source_country,
+                    "language": language,
+                }
+
                 cur.execute(
                     """
-                    INSERT INTO alert_events (type, severity, commodity, title,
-                        body, source, source_url, metadata, time)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    ON CONFLICT (source_url) DO NOTHING
-                    RETURNING id
+                    INSERT INTO alert_events (type, severity, title, body, commodity,
+                        region, source, source_url, metadata, time)
+                    VALUES ('news_event', %s, %s, %s, %s, %s, 'gdelt', %s, %s, %s)
                     """,
                     (
-                        event["type"], event["severity"], event["commodity"],
-                        event["title"], event["body"], event["source"],
-                        event["source_url"], event["metadata"], event["time"],
+                        severity,
+                        title[:500],
+                        body,
+                        commodity,
+                        region,
+                        url,
+                        json.dumps(metadata),
+                        event_time,
                     ),
                 )
-                if cur.fetchone() is not None:
-                    event["_inserted"] = True
-                    inserted += 1
+                created += 1
 
-        conn.commit()
-        logger.info("Inserted %d new GDELT alerts (of %d fetched)", inserted, len(events))
+            conn.commit()
+
+        if created > 0:
+            _publish_alert_count(created)
+
+        logger.info("GDELT ingest: %d created, %d skipped", created, skipped)
+        return {"articles_fetched": len(articles), "alerts_created": created, "skipped": skipped}
     finally:
         conn.close()
 
-    # Publish only actually inserted events to Redis for SSE clients
-    if inserted > 0:
-        actually_inserted = [e for e in events if e.get("_inserted")]
-        _publish_alerts(actually_inserted)
 
-    return inserted
+def _fetch_gdelt_articles() -> list[dict]:
+    """Fetch recent supply chain articles from GDELT GKG API."""
+    query_terms = [
+        "supply chain disruption",
+        "port closure",
+        "shipping delay",
+        "oil supply",
+        "commodity price",
+    ]
+
+    all_articles = []
+    for term in query_terms:
+        try:
+            resp = requests.get(
+                GDELT_GKG_URL,
+                params={
+                    "query": term,
+                    "mode": "ArtList",
+                    "maxrecords": 25,
+                    "timespan": "15min",
+                    "format": "json",
+                    "sort": "DateDesc",
+                },
+                timeout=15,
+            )
+            if resp.status_code != 200:
+                logger.warning("GDELT query '%s' returned %d", term, resp.status_code)
+                continue
+            data = resp.json()
+            all_articles.extend(data.get("articles", []))
+        except requests.RequestException as e:
+            logger.warning("GDELT request failed for '%s': %s", term, e)
+        except (json.JSONDecodeError, ValueError):
+            logger.warning("GDELT returned invalid JSON for '%s'", term)
+
+    # Deduplicate by URL
+    seen: set[str] = set()
+    unique = []
+    for article in all_articles:
+        url = article.get("url", "")
+        if url and url not in seen:
+            seen.add(url)
+            unique.append(article)
+    return unique
 
 
-def _publish_alerts(events: list[dict]):
-    """Publish new alerts to Redis pub/sub for SSE."""
-    import redis as sync_redis
-
+def _publish_alert_count(count: int):
+    """Publish new alert notification to Redis for SSE clients."""
     try:
+        import redis as sync_redis
         r = sync_redis.from_url(settings.REDIS_URL)
-        for event in events:
-            # Remove internal tracking key before publishing
-            payload = {k: v for k, v in event.items() if not k.startswith("_")}
-            r.publish("alerts", json.dumps(payload))
+        r.publish("alerts", json.dumps({
+            "type": "news_event",
+            "count": count,
+            "source": "gdelt",
+            "time": datetime.now(timezone.utc).isoformat(),
+        }))
         r.close()
-    except Exception as e:
-        logger.warning("Failed to publish alerts to Redis: %s", e)
+    except Exception:
+        pass

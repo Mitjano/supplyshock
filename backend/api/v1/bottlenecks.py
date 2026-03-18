@@ -1,8 +1,7 @@
 """Bottleneck endpoints — /api/v1/bottlenecks/*
 
-- GET /bottlenecks                    — list all bottleneck nodes
-- GET /bottlenecks/{slug}             — node detail
-- GET /bottlenecks/{slug}/status      — live status + history
+- GET /bottlenecks             — list all bottleneck nodes
+- GET /bottlenecks/{slug}      — node detail + status history
 """
 
 from typing import Any
@@ -12,7 +11,6 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from dependencies import get_db
-from middleware.auth import require_auth
 from middleware.rate_limit import check_api_rate_limit
 
 router = APIRouter(prefix="/bottlenecks", tags=["Bottlenecks"])
@@ -20,38 +18,71 @@ router = APIRouter(prefix="/bottlenecks", tags=["Bottlenecks"])
 
 @router.get("")
 async def list_bottlenecks(
+    commodity: str | None = Query(None, description="Filter by commodity"),
+    type: str | None = Query(None, description="Filter: port, strait, pipeline, rail"),
     user: dict[str, Any] = Depends(check_api_rate_limit),
     db: AsyncSession = Depends(get_db),
 ):
-    """List all bottleneck nodes."""
+    """List all bottleneck nodes with latest congestion status."""
+    conditions = []
+    params: dict[str, Any] = {}
+
+    if commodity:
+        conditions.append(":commodity = ANY(bn.commodities)")
+        params["commodity"] = commodity
+    if type:
+        conditions.append("bn.type = :type")
+        params["type"] = type
+
+    where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+
     result = await db.execute(
-        text("""
-            SELECT id, slug, name, type, country_code, latitude, longitude,
-                   commodities, annual_volume_mt, global_share_pct, baseline_risk,
-                   description
-            FROM bottleneck_nodes
-            ORDER BY baseline_risk DESC, name ASC
+        text(f"""
+            SELECT bn.id, bn.slug, bn.name, bn.type, bn.country_code,
+                   bn.latitude, bn.longitude, bn.commodities,
+                   bn.annual_volume_mt, bn.global_share_pct, bn.baseline_risk,
+                   bn.description,
+                   cs.vessel_count, cs.avg_speed_knots, cs.congestion_index,
+                   cs.risk_level, cs.time as status_time
+            FROM bottleneck_nodes bn
+            LEFT JOIN LATERAL (
+                SELECT vessel_count, avg_speed_knots, congestion_index, risk_level, time
+                FROM chokepoint_status
+                WHERE node_id = bn.id
+                ORDER BY time DESC
+                LIMIT 1
+            ) cs ON TRUE
+            {where}
+            ORDER BY bn.global_share_pct DESC NULLS LAST
         """),
+        params,
     )
     rows = result.mappings().all()
 
     return {
         "data": [
             {
-                "id": str(row["id"]),
-                "slug": row["slug"],
-                "name": row["name"],
-                "type": row["type"],
-                "country_code": row["country_code"],
-                "latitude": float(row["latitude"]) if row["latitude"] else None,
-                "longitude": float(row["longitude"]) if row["longitude"] else None,
-                "commodities": row["commodities"] or [],
-                "annual_volume_mt": float(row["annual_volume_mt"]) if row["annual_volume_mt"] else None,
-                "global_share_pct": float(row["global_share_pct"]) if row["global_share_pct"] else None,
-                "baseline_risk": row["baseline_risk"],
-                "description": row["description"],
+                "id": str(r["id"]),
+                "slug": r["slug"],
+                "name": r["name"],
+                "type": r["type"],
+                "country_code": r["country_code"],
+                "latitude": r["latitude"],
+                "longitude": r["longitude"],
+                "commodities": r["commodities"],
+                "annual_volume_mt": float(r["annual_volume_mt"]) if r["annual_volume_mt"] else None,
+                "global_share_pct": float(r["global_share_pct"]) if r["global_share_pct"] else None,
+                "baseline_risk": r["baseline_risk"],
+                "description": r["description"],
+                "status": {
+                    "vessel_count": r["vessel_count"],
+                    "avg_speed_knots": float(r["avg_speed_knots"]) if r["avg_speed_knots"] else None,
+                    "congestion_index": float(r["congestion_index"]) if r["congestion_index"] else None,
+                    "risk_level": r["risk_level"] or "normal",
+                    "updated_at": r["status_time"].isoformat() if r["status_time"] else None,
+                } if r["vessel_count"] is not None else None,
             }
-            for row in rows
+            for r in rows
         ]
     }
 
@@ -62,92 +93,82 @@ async def get_bottleneck(
     user: dict[str, Any] = Depends(check_api_rate_limit),
     db: AsyncSession = Depends(get_db),
 ):
-    """Get bottleneck node detail."""
+    """Get bottleneck node detail with 7-day status history and recent alerts."""
     result = await db.execute(
         text("""
             SELECT id, slug, name, type, country_code, latitude, longitude,
                    commodities, annual_volume_mt, global_share_pct, baseline_risk,
                    description, wikipedia_url
-            FROM bottleneck_nodes
-            WHERE slug = :slug
+            FROM bottleneck_nodes WHERE slug = :slug
         """),
         {"slug": slug},
     )
-    row = result.mappings().first()
-
-    if not row:
-        raise HTTPException(status_code=404, detail={"error": "Bottleneck not found", "code": "NOT_FOUND"})
-
-    return {
-        "data": {
-            "id": str(row["id"]),
-            "slug": row["slug"],
-            "name": row["name"],
-            "type": row["type"],
-            "country_code": row["country_code"],
-            "latitude": float(row["latitude"]) if row["latitude"] else None,
-            "longitude": float(row["longitude"]) if row["longitude"] else None,
-            "commodities": row["commodities"] or [],
-            "annual_volume_mt": float(row["annual_volume_mt"]) if row["annual_volume_mt"] else None,
-            "global_share_pct": float(row["global_share_pct"]) if row["global_share_pct"] else None,
-            "baseline_risk": row["baseline_risk"],
-            "description": row["description"],
-            "wikipedia_url": row["wikipedia_url"],
-        }
-    }
-
-
-@router.get("/{slug}/status")
-async def get_bottleneck_status(
-    slug: str,
-    history_days: int = Query(7, le=30),
-    user: dict[str, Any] = Depends(check_api_rate_limit),
-    db: AsyncSession = Depends(get_db),
-):
-    """Get real-time congestion status for a bottleneck + history."""
-    # Verify node exists
-    node_result = await db.execute(
-        text("SELECT id, name, baseline_risk FROM bottleneck_nodes WHERE slug = :slug"),
-        {"slug": slug},
-    )
-    node = node_result.mappings().first()
+    node = result.mappings().first()
     if not node:
-        raise HTTPException(status_code=404, detail={"error": "Bottleneck not found", "code": "NOT_FOUND"})
+        raise HTTPException(status_code=404, detail="Bottleneck node not found")
 
-    # Get status history
-    result = await db.execute(
+    node_id = str(node["id"])
+
+    status_result = await db.execute(
         text("""
             SELECT vessel_count, avg_speed_knots, congestion_index, risk_level, time
             FROM chokepoint_status
-            WHERE node_id = :node_id
-              AND time > NOW() - make_interval(days => :history_days)
-            ORDER BY time DESC
+            WHERE node_id = :node_id AND time > NOW() - INTERVAL '7 days'
+            ORDER BY time ASC
         """),
-        {"node_id": node["id"], "history_days": history_days},
+        {"node_id": node_id},
     )
-    rows = result.mappings().all()
+    status_rows = status_result.mappings().all()
 
-    current = rows[0] if rows else None
+    alert_result = await db.execute(
+        text("""
+            SELECT id, time, type, severity, title, body, source_url
+            FROM alert_events
+            WHERE metadata->>'node_slug' = :slug
+              AND time > NOW() - INTERVAL '30 days'
+            ORDER BY time DESC
+            LIMIT 10
+        """),
+        {"slug": slug},
+    )
+    alert_rows = alert_result.mappings().all()
 
     return {
-        "data": {
-            "slug": slug,
+        "node": {
+            "id": node_id,
+            "slug": node["slug"],
             "name": node["name"],
-            "current": {
-                "vessel_count": current["vessel_count"] if current else 0,
-                "avg_speed_knots": float(current["avg_speed_knots"]) if current and current["avg_speed_knots"] else None,
-                "congestion_index": float(current["congestion_index"]) if current and current["congestion_index"] else None,
-                "risk_level": current["risk_level"] if current else "unknown",
-                "time": current["time"].isoformat() if current else None,
-            },
-            "history": [
-                {
-                    "vessel_count": row["vessel_count"],
-                    "congestion_index": float(row["congestion_index"]) if row["congestion_index"] else None,
-                    "risk_level": row["risk_level"],
-                    "time": row["time"].isoformat(),
-                }
-                for row in rows
-            ],
-        }
+            "type": node["type"],
+            "country_code": node["country_code"],
+            "latitude": node["latitude"],
+            "longitude": node["longitude"],
+            "commodities": node["commodities"],
+            "annual_volume_mt": float(node["annual_volume_mt"]) if node["annual_volume_mt"] else None,
+            "global_share_pct": float(node["global_share_pct"]) if node["global_share_pct"] else None,
+            "baseline_risk": node["baseline_risk"],
+            "description": node["description"],
+            "wikipedia_url": node["wikipedia_url"],
+        },
+        "status_history": [
+            {
+                "vessel_count": r["vessel_count"],
+                "avg_speed_knots": float(r["avg_speed_knots"]) if r["avg_speed_knots"] else None,
+                "congestion_index": float(r["congestion_index"]) if r["congestion_index"] else None,
+                "risk_level": r["risk_level"],
+                "time": r["time"].isoformat(),
+            }
+            for r in status_rows
+        ],
+        "recent_alerts": [
+            {
+                "id": str(r["id"]),
+                "time": r["time"].isoformat(),
+                "type": r["type"],
+                "severity": r["severity"],
+                "title": r["title"],
+                "body": r["body"],
+                "source_url": r["source_url"],
+            }
+            for r in alert_rows
+        ],
     }
