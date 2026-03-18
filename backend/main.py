@@ -31,6 +31,12 @@ from api.v1.analytics import router as analytics_router
 from api.v1.fleet import router as fleet_router
 from api.v1.notifications import router as notifications_router
 from api.v1.events import router as events_router
+from api.v1.chokepoints import router as chokepoints_router
+from api.v1.macro import router as macro_router
+from api.v1.fx import router as fx_router
+from api.v1.risk import router as risk_router
+from api.v1.crops import router as crops_router
+from api.v1.sentiment import router as sentiment_router
 from webhooks.stripe import router as stripe_webhook_router
 
 # ── Sentry ──
@@ -136,6 +142,12 @@ app.include_router(analytics_router, prefix="/api/v1")
 app.include_router(fleet_router, prefix="/api/v1")
 app.include_router(notifications_router, prefix="/api/v1")
 app.include_router(events_router, prefix="/api/v1")
+app.include_router(chokepoints_router, prefix="/api/v1")
+app.include_router(macro_router, prefix="/api/v1")
+app.include_router(fx_router, prefix="/api/v1")
+app.include_router(risk_router, prefix="/api/v1")
+app.include_router(crops_router, prefix="/api/v1")
+app.include_router(sentiment_router, prefix="/api/v1")
 
 # ── Webhooks (no /api/v1 prefix) ──
 app.include_router(stripe_webhook_router)

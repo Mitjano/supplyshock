@@ -10,7 +10,8 @@
     "reports": "Reports",
     "settings": "Settings",
     "compliance": "Compliance",
-    "analytics": "Analytics"
+    "analytics": "Analytics",
+    "macro": "Macro"
   },
   "layout": {
     "overview": "OVERVIEW",
@@ -427,8 +428,53 @@
         "seasonal": "Seasonal",
         "forwardCurves": "Forward Curves",
         "balance": "Supply/Demand",
-        "ports": "Ports"
+        "ports": "Ports",
+        "rigCount": "Rig Count",
+        "natGas": "Nat Gas Storage",
+        "spr": "SPR",
+        "crops": "Crops",
+        "carbon": "Carbon",
+        "bunker": "Bunker Fuel"
       }
+    },
+    "rigCount": {
+      "rigs": "Rig Count",
+      "wtiShifted": "WTI (6m shifted)"
+    },
+    "natGas": {
+      "fiveYearRange": "5-Year Range",
+      "fiveYearAvg": "5-Year Avg",
+      "previousYear": "Previous Year",
+      "currentYear": "Current Year"
+    },
+    "spr": {
+      "currentLevel": "Current Level",
+      "withdrawalRate": "Withdrawal Rate",
+      "daysOfCover": "Days of Cover",
+      "fillLevel": "Fill Level"
+    },
+    "crops": {
+      "condition": "Crop Condition",
+      "exports": "Export Sales",
+      "excellent": "Excellent",
+      "good": "Good",
+      "fair": "Fair",
+      "poor": "Poor",
+      "veryPoor": "Very Poor",
+      "weeklySales": "Weekly Sales",
+      "cumulative": "Cumulative"
+    },
+    "carbon": {
+      "priceUnit": "EUR/tCO2"
+    },
+    "bunker": {
+      "estimated": "Estimated (proxy)"
+    },
+    "fx": {
+      "dxyOverlay": "DXY vs Commodity Price"
+    },
+    "conflicts": {
+      "toggle": "Conflicts"
     },
     "cot": {
       "commercial": "Commercial Net",
@@ -550,5 +596,37 @@
     "navigate": "Navigate",
     "select": "Select",
     "close": "Close"
+  },
+  "macro": {
+    "title": "Macro Dashboard",
+    "tabs": {
+      "pmi": "PMI",
+      "tradeFlows": "Trade Flows",
+      "fx": "FX",
+      "rates": "Rates",
+      "uncertainty": "Uncertainty"
+    },
+    "pmi": {
+      "us": "US",
+      "eu": "Eurozone",
+      "cn": "China",
+      "jp": "Japan",
+      "threshold": "Expansion Threshold"
+    },
+    "trade": {
+      "imports": "Imports",
+      "exports": "Exports",
+      "balance": "Trade Balance"
+    },
+    "rates": {
+      "fedFunds": "Fed Funds",
+      "us10y": "US 10Y",
+      "us2y": "US 2Y",
+      "yieldCurve": "Yield Curve"
+    },
+    "uncertainty": {
+      "epu": "Economic Policy Uncertainty",
+      "gpr": "Geopolitical Risk"
+    }
   }
 }

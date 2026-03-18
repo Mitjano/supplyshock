@@ -50,6 +50,12 @@ const SeasonalChart = defineAsyncComponent(() => import('@/components/analytics/
 const ForwardCurveChart = defineAsyncComponent(() => import('@/components/analytics/ForwardCurveChart.vue'))
 const BalanceChart = defineAsyncComponent(() => import('@/components/analytics/BalanceChart.vue'))
 const PortAnalyticsPanel = defineAsyncComponent(() => import('@/components/analytics/PortAnalyticsPanel.vue'))
+const RigCountChart = defineAsyncComponent(() => import('@/components/analytics/RigCountChart.vue'))
+const NatGasStorageChart = defineAsyncComponent(() => import('@/components/analytics/NatGasStorageChart.vue'))
+const SPRTracker = defineAsyncComponent(() => import('@/components/analytics/SPRTracker.vue'))
+const CropProgressChart = defineAsyncComponent(() => import('@/components/analytics/CropProgressChart.vue'))
+const CarbonPriceChart = defineAsyncComponent(() => import('@/components/analytics/CarbonPriceChart.vue'))
+const BunkerPriceChart = defineAsyncComponent(() => import('@/components/analytics/BunkerPriceChart.vue'))
 
 const tabs = [
   { key: 'cot', icon: 'pi-chart-bar', label: () => t('analytics.dashboard.tabs.cot') },
@@ -59,7 +65,13 @@ const tabs = [
   { key: 'seasonal', icon: 'pi-calendar', label: () => t('analytics.dashboard.tabs.seasonal') },
   { key: 'forwardCurves', icon: 'pi-chart-line', label: () => t('analytics.dashboard.tabs.forwardCurves') },
   { key: 'balance', icon: 'pi-chart-pie', label: () => t('analytics.dashboard.tabs.balance') },
-  { key: 'ports', icon: 'pi-map-marker', label: () => t('analytics.dashboard.tabs.ports') }
+  { key: 'ports', icon: 'pi-map-marker', label: () => t('analytics.dashboard.tabs.ports') },
+  { key: 'rigCount', icon: 'pi-wrench', label: () => t('analytics.dashboard.tabs.rigCount') },
+  { key: 'natGas', icon: 'pi-bolt', label: () => t('analytics.dashboard.tabs.natGas') },
+  { key: 'spr', icon: 'pi-warehouse', label: () => t('analytics.dashboard.tabs.spr') },
+  { key: 'crops', icon: 'pi-sun', label: () => t('analytics.dashboard.tabs.crops') },
+  { key: 'carbon', icon: 'pi-cloud', label: () => t('analytics.dashboard.tabs.carbon') },
+  { key: 'bunker', icon: 'pi-truck', label: () => t('analytics.dashboard.tabs.bunker') }
 ]
 
 const componentMap: Record<string, any> = {
@@ -70,7 +82,13 @@ const componentMap: Record<string, any> = {
   seasonal: SeasonalChart,
   forwardCurves: ForwardCurveChart,
   balance: BalanceChart,
-  ports: PortAnalyticsPanel
+  ports: PortAnalyticsPanel,
+  rigCount: RigCountChart,
+  natGas: NatGasStorageChart,
+  spr: SPRTracker,
+  crops: CropProgressChart,
+  carbon: CarbonPriceChart,
+  bunker: BunkerPriceChart
 }
 
 const activeComponent = computed(() => componentMap[activeTab.value] || COTChart)

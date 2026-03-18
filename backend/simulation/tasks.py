@@ -139,6 +139,73 @@ celery_app.conf.update(
             "task": "calculate_port_analytics",
             "schedule": 3600.0,  # every 1 hour
         },
+        # ── IMF PortWatch (#76) ──
+        "ingest-imf-portwatch": {
+            "task": "ingest_imf_portwatch",
+            "schedule": crontab(minute=0, hour="*/6"),  # every 6 hours
+        },
+        # ── DBnomics macro data (#77) ──
+        "ingest-dbnomics": {
+            "task": "ingest_dbnomics",
+            "schedule": crontab(minute=0, hour="*/12"),  # every 12 hours
+        },
+        # ── Frankfurter FX (#78) ──
+        "ingest-frankfurter-fx": {
+            "task": "ingest_frankfurter_fx",
+            "schedule": crontab(minute=0, hour="*/4"),  # every 4 hours
+        },
+        # ── GDELT conflict events (#79) ──
+        "ingest-conflict-events": {
+            "task": "ingest_conflict_events",
+            "schedule": crontab(minute=0, hour=2),  # daily at 2:00 UTC
+        },
+        # ── GPR Index (#80) ──
+        "ingest-gpr-index": {
+            "task": "ingest_gpr_index",
+            "schedule": crontab(minute=0, hour=7, day_of_week=1),  # weekly on Monday at 7:00 UTC
+        },
+        # ── Baker Hughes rig count (#81) ──
+        "ingest-baker-hughes": {
+            "task": "ingest_baker_hughes",
+            "schedule": crontab(minute=0, hour=19, day_of_week=5),  # Friday 19:00 UTC
+        },
+        # ── Issues #82-#90 — Extended data sources ──
+        "ingest-jodi-oil": {
+            "task": "ingest_jodi_oil",
+            "schedule": crontab(minute=0, hour=7, day_of_week=1),  # weekly Monday 07:00 UTC
+        },
+        "ingest-usda-crops": {
+            "task": "ingest_usda_crops",
+            "schedule": crontab(minute=0, hour=8, day_of_week="1,4"),  # Mon & Thu 08:00 UTC
+        },
+        "ingest-carbon-prices": {
+            "task": "ingest_carbon_prices",
+            "schedule": crontab(minute=45, hour="*/6"),  # every 6h at :45
+        },
+        "ingest-fred-macro": {
+            "task": "ingest_fred_macro",
+            "schedule": crontab(minute=10, hour="*/6"),  # every 6h at :10
+        },
+        "ingest-bunker-fuel": {
+            "task": "ingest_bunker_fuel",
+            "schedule": crontab(minute=30, hour="*/6"),  # every 6h at :30
+        },
+        "import-ofac-sdn-xml": {
+            "task": "import_ofac_sdn_xml",
+            "schedule": crontab(minute=30, hour=4),  # daily 04:30 UTC
+        },
+        "ingest-google-trends": {
+            "task": "ingest_google_trends",
+            "schedule": crontab(minute=0, hour="*/6"),  # every 6h (graceful failure)
+        },
+        "ingest-cpb-trade": {
+            "task": "ingest_cpb_trade",
+            "schedule": crontab(minute=0, hour=6, day_of_month=1),  # monthly 1st 06:00 UTC
+        },
+        "ingest-lme-stocks": {
+            "task": "ingest_lme_stocks",
+            "schedule": crontab(minute=0, hour=16),  # daily 16:00 UTC
+        },
     },
 )
 
@@ -1273,4 +1340,204 @@ def calculate_port_analytics_task(self):
         return calculate_all_port_analytics()
     except Exception as exc:
         logger.error("Port analytics calculation failed: %s", exc)
+        raise self.retry(exc=exc)
+
+
+# ── IMF PortWatch (#76) ──
+
+@celery_app.task(name="ingest_imf_portwatch", bind=True, max_retries=3, default_retry_delay=300)
+def ingest_imf_portwatch_task(self):
+    """Fetch chokepoint transit data from IMF PortWatch (every 6h)."""
+    try:
+        from ingestion.imf_portwatch import ingest_imf_portwatch
+        return ingest_imf_portwatch()
+    except Exception as exc:
+        logger.error("IMF PortWatch ingestion failed: %s", exc)
+        raise self.retry(exc=exc)
+
+
+# ── DBnomics macro data (#77) ──
+
+@celery_app.task(name="ingest_dbnomics", bind=True, max_retries=3, default_retry_delay=300)
+def ingest_dbnomics_task(self):
+    """Fetch macro indicators from DBnomics (every 12h)."""
+    try:
+        from ingestion.dbnomics import ingest_dbnomics
+        return ingest_dbnomics()
+    except Exception as exc:
+        logger.error("DBnomics ingestion failed: %s", exc)
+        raise self.retry(exc=exc)
+
+
+# ── Frankfurter FX (#78) ──
+
+@celery_app.task(name="ingest_frankfurter_fx", bind=True, max_retries=3, default_retry_delay=120)
+def ingest_frankfurter_fx_task(self):
+    """Fetch FX rates from Frankfurter API (every 4h)."""
+    try:
+        from ingestion.frankfurter_fx import ingest_frankfurter_fx
+        return ingest_frankfurter_fx()
+    except Exception as exc:
+        logger.error("Frankfurter FX ingestion failed: %s", exc)
+        raise self.retry(exc=exc)
+
+
+# ── GDELT conflict events (#79) ──
+
+@celery_app.task(name="ingest_conflict_events", bind=True, max_retries=3, default_retry_delay=300)
+def ingest_conflict_events_task(self):
+    """Fetch conflict events from GDELT (daily)."""
+    try:
+        from ingestion.acled import ingest_conflict_events
+        return ingest_conflict_events()
+    except Exception as exc:
+        logger.error("GDELT conflict ingestion failed: %s", exc)
+        raise self.retry(exc=exc)
+
+
+# ── GPR Index (#80) ──
+
+@celery_app.task(name="ingest_gpr_index", bind=True, max_retries=3, default_retry_delay=300)
+def ingest_gpr_index_task(self):
+    """Download and parse GPR index (weekly)."""
+    try:
+        from ingestion.gpr_index import ingest_gpr_index
+        return ingest_gpr_index()
+    except Exception as exc:
+        logger.error("GPR index ingestion failed: %s", exc)
+        raise self.retry(exc=exc)
+
+
+# ── Baker Hughes rig count (#81) ──
+
+@celery_app.task(name="ingest_baker_hughes", bind=True, max_retries=3, default_retry_delay=300)
+def ingest_baker_hughes_task(self):
+    """Fetch Baker Hughes rig counts via EIA (Friday 19:00 UTC)."""
+    try:
+        from ingestion.baker_hughes import ingest_baker_hughes
+        return ingest_baker_hughes()
+    except Exception as exc:
+        logger.error("Baker Hughes rig count ingestion failed: %s", exc)
+        raise self.retry(exc=exc)
+
+
+# ── JODI Oil (#82) ──
+
+@celery_app.task(name="ingest_jodi_oil", bind=True, max_retries=3, default_retry_delay=300)
+def ingest_jodi_oil_task(self):
+    """Fetch JODI oil supply/demand balance (weekly)."""
+    try:
+        from ingestion.jodi import ingest_jodi_oil
+        return ingest_jodi_oil()
+    except Exception as exc:
+        logger.error("JODI oil ingestion failed: %s", exc)
+        raise self.retry(exc=exc)
+
+
+# ── USDA crops (#84) ──
+
+@celery_app.task(name="ingest_usda_crops", bind=True, max_retries=3, default_retry_delay=300)
+def ingest_usda_crops_task(self):
+    """Fetch USDA crop progress, condition, and export sales (Mon & Thu)."""
+    try:
+        from ingestion.usda import ingest_usda_crops
+        return ingest_usda_crops()
+    except Exception as exc:
+        logger.error("USDA crop ingestion failed: %s", exc)
+        raise self.retry(exc=exc)
+
+
+# ── Carbon prices (#85) ──
+
+@celery_app.task(name="ingest_carbon_prices", bind=True, max_retries=3, default_retry_delay=120)
+def ingest_carbon_prices_task(self):
+    """Fetch KRBN ETF carbon price proxy (every 6h)."""
+    try:
+        from ingestion.carbon_prices import ingest_carbon_prices
+        return ingest_carbon_prices()
+    except Exception as exc:
+        logger.error("Carbon price ingestion failed: %s", exc)
+        raise self.retry(exc=exc)
+
+
+# ── FRED expanded macro (#86) ──
+
+@celery_app.task(name="ingest_fred_macro", bind=True, max_retries=3, default_retry_delay=120)
+def ingest_fred_macro_task(self):
+    """Fetch expanded FRED macro indicators (DXY, rates, EPU, INDPRO)."""
+    try:
+        from ingestion.fred_prices import ingest_fred_macro
+        api_key = settings.FRED_API_KEY if hasattr(settings, "FRED_API_KEY") else ""
+        if not api_key:
+            logger.warning("FRED_API_KEY not set — skipping macro ingestion")
+            return {"skipped": True}
+        return ingest_fred_macro(api_key)
+    except Exception as exc:
+        logger.error("FRED macro ingestion failed: %s", exc)
+        raise self.retry(exc=exc)
+
+
+# ── Bunker fuel proxy (#87) ──
+
+@celery_app.task(name="ingest_bunker_fuel", bind=True, max_retries=3, default_retry_delay=120)
+def ingest_bunker_fuel_task(self):
+    """Fetch bunker fuel proxy prices (every 6h)."""
+    try:
+        from ingestion.bunker_fuel import ingest_bunker_fuel_prices
+        return ingest_bunker_fuel_prices()
+    except Exception as exc:
+        logger.error("Bunker fuel ingestion failed: %s", exc)
+        raise self.retry(exc=exc)
+
+
+# ── OFAC SDN XML (#88) ──
+
+@celery_app.task(name="import_ofac_sdn_xml", bind=True, max_retries=3, default_retry_delay=300)
+def import_ofac_sdn_xml_task(self):
+    """Import OFAC SDN XML for enhanced sanctions matching (daily)."""
+    try:
+        from ingestion.sanctions import import_ofac_sdn_xml
+        return import_ofac_sdn_xml()
+    except Exception as exc:
+        logger.error("OFAC SDN XML import failed: %s", exc)
+        raise self.retry(exc=exc)
+
+
+# ── Google Trends (#89) ──
+
+@celery_app.task(name="ingest_google_trends", bind=True, max_retries=1, default_retry_delay=600)
+def ingest_google_trends_task(self):
+    """Fetch Google Trends commodity search interest (every 6h, graceful failure)."""
+    try:
+        from ingestion.google_trends import ingest_google_trends
+        return ingest_google_trends()
+    except Exception as exc:
+        # Graceful — pytrends is fragile, do not block other tasks
+        logger.warning("Google Trends ingestion failed (non-fatal): %s", exc)
+        return {"error": str(exc)}
+
+
+# ── CPB World Trade (#90) ──
+
+@celery_app.task(name="ingest_cpb_trade", bind=True, max_retries=3, default_retry_delay=300)
+def ingest_cpb_trade_task(self):
+    """Fetch CPB World Trade Monitor (monthly)."""
+    try:
+        from ingestion.cpb_trade import ingest_cpb_trade
+        return ingest_cpb_trade()
+    except Exception as exc:
+        logger.error("CPB trade ingestion failed: %s", exc)
+        raise self.retry(exc=exc)
+
+
+# ── LME warehouse stocks (#90) ──
+
+@celery_app.task(name="ingest_lme_stocks", bind=True, max_retries=3, default_retry_delay=120)
+def ingest_lme_stocks_task(self):
+    """Fetch metal ETF warehouse stock proxies (daily)."""
+    try:
+        from ingestion.lme_stocks import ingest_lme_stocks
+        return ingest_lme_stocks()
+    except Exception as exc:
+        logger.error("LME stocks ingestion failed: %s", exc)
         raise self.retry(exc=exc)

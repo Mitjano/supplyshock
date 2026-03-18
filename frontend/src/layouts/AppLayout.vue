@@ -205,6 +205,7 @@ const currentPageTitle = computed(() => {
     '/settings': t('nav.settings'),
     '/analytics': t('nav.analytics'),
     '/fleet': t('nav.fleet'),
+    '/macro': t('nav.macro'),
   }
   return map[cleanPath.value] || 'Page'
 })
@@ -227,6 +228,7 @@ const navSections = computed(() => [
     items: [
       { key: 'commodities', icon: 'pi-chart-line', route: localePath('/commodities'), label: () => t('nav.commodities') },
       { key: 'analytics', icon: 'pi-chart-bar', route: localePath('/analytics'), label: () => t('nav.analytics') },
+      { key: 'macro', icon: 'pi-globe', route: localePath('/macro'), label: () => t('nav.macro') },
     ]
   },
   {

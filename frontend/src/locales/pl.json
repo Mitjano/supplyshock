@@ -10,7 +10,8 @@
     "reports": "Raporty",
     "settings": "Ustawienia",
     "compliance": "Zgodność",
-    "analytics": "Analityka"
+    "analytics": "Analityka",
+    "macro": "Makro"
   },
   "layout": {
     "overview": "PRZEGLĄD",
@@ -427,8 +428,53 @@
         "seasonal": "Sezonowość",
         "forwardCurves": "Krzywe terminowe",
         "balance": "Podaż/Popyt",
-        "ports": "Porty"
+        "ports": "Porty",
+        "rigCount": "Wiertnie",
+        "natGas": "Magazyny gazu",
+        "spr": "SPR",
+        "crops": "Uprawy",
+        "carbon": "Emisje CO2",
+        "bunker": "Paliwo bunkrowe"
       }
+    },
+    "rigCount": {
+      "rigs": "Liczba wierteł",
+      "wtiShifted": "WTI (przesunięte 6m)"
+    },
+    "natGas": {
+      "fiveYearRange": "Zakres 5-letni",
+      "fiveYearAvg": "Średnia 5-letnia",
+      "previousYear": "Poprzedni rok",
+      "currentYear": "Bieżący rok"
+    },
+    "spr": {
+      "currentLevel": "Aktualny poziom",
+      "withdrawalRate": "Tempo wypływu",
+      "daysOfCover": "Dni pokrycia",
+      "fillLevel": "Poziom napełnienia"
+    },
+    "crops": {
+      "condition": "Stan upraw",
+      "exports": "Sprzedaż eksportowa",
+      "excellent": "Doskonały",
+      "good": "Dobry",
+      "fair": "Średni",
+      "poor": "Słaby",
+      "veryPoor": "Bardzo słaby",
+      "weeklySales": "Sprzedaż tygodniowa",
+      "cumulative": "Skumulowana"
+    },
+    "carbon": {
+      "priceUnit": "EUR/tCO2"
+    },
+    "bunker": {
+      "estimated": "Szacunkowa (proxy)"
+    },
+    "fx": {
+      "dxyOverlay": "DXY vs cena surowca"
+    },
+    "conflicts": {
+      "toggle": "Konflikty"
     },
     "cot": {
       "commercial": "Pozycje komercyjne netto",
@@ -550,5 +596,37 @@
     "navigate": "Nawiguj",
     "select": "Wybierz",
     "close": "Zamknij"
+  },
+  "macro": {
+    "title": "Panel makro",
+    "tabs": {
+      "pmi": "PMI",
+      "tradeFlows": "Przepływy handlowe",
+      "fx": "FX",
+      "rates": "Stopy",
+      "uncertainty": "Niepewność"
+    },
+    "pmi": {
+      "us": "USA",
+      "eu": "Strefa euro",
+      "cn": "Chiny",
+      "jp": "Japonia",
+      "threshold": "Próg ekspansji"
+    },
+    "trade": {
+      "imports": "Import",
+      "exports": "Eksport",
+      "balance": "Bilans handlowy"
+    },
+    "rates": {
+      "fedFunds": "Fed Funds",
+      "us10y": "US 10Y",
+      "us2y": "US 2Y",
+      "yieldCurve": "Krzywa dochodowości"
+    },
+    "uncertainty": {
+      "epu": "Niepewność polityki gospodarczej",
+      "gpr": "Ryzyko geopolityczne"
+    }
   }
 }

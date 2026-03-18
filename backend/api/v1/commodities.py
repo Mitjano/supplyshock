@@ -4,6 +4,7 @@
 - GET /commodities/prices/{commodity}/history — price history
 - GET /commodities/flows              — trade flows as GeoJSON
 - GET /commodities/flows/{commodity}/trend — supply trend analysis
+- GET /commodities/carbon             — EU ETS carbon price proxy (Issue #85)
 """
 
 from typing import Any
@@ -114,6 +115,47 @@ async def get_price_history(
             }
             for row in rows
         ]
+    }
+
+
+# ── Issue #85 — Carbon Prices ──
+
+@router.get("/carbon")
+async def get_carbon_prices(
+    days: int = Query(90, ge=1, le=365, description="Number of days of history"),
+    user: dict[str, Any] = Depends(check_api_rate_limit),
+    db: AsyncSession = Depends(get_db),
+):
+    """EU ETS carbon price proxy (KRBN ETF).
+
+    Returns daily carbon price data using KraneShares Global Carbon
+    Strategy ETF as a proxy for EU ETS carbon allowance prices.
+    """
+    result = await db.execute(
+        text("""
+            SELECT commodity, benchmark, price, currency, source, time
+            FROM commodity_prices
+            WHERE commodity = 'carbon_eu_ets'
+              AND time > NOW() - make_interval(days => :days)
+            ORDER BY time DESC
+        """),
+        {"days": days},
+    )
+    rows = result.mappings().all()
+
+    return {
+        "data": [
+            {
+                "price": float(row["price"]),
+                "currency": row["currency"],
+                "benchmark": row["benchmark"],
+                "source": row["source"],
+                "time": row["time"].isoformat(),
+            }
+            for row in rows
+        ],
+        "commodity": "carbon_eu_ets",
+        "days": days,
     }
 
 

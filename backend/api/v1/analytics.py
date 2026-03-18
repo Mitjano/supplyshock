@@ -8,7 +8,12 @@
 - GET /analytics/correlations       — Commodity correlation matrix (Issue #67)
 - GET /analytics/seasonal           — Seasonal price patterns (Issue #68)
 - GET /analytics/forward-curve      — Forward/futures curve (Issue #69)
-- GET /analytics/balance/{commodity} — Supply/demand balance (Issue #70)
+- GET /analytics/balance/{commodity} — Supply/demand balance (Issue #70, #82)
+- GET /analytics/rigs               — Baker Hughes rig counts (Issue #81)
+- GET /analytics/inventories/natgas — EIA natural gas storage (Issue #83)
+- GET /analytics/spr                — Strategic Petroleum Reserve (Issue #83)
+- GET /analytics/bunker             — Bunker fuel proxy prices (Issue #87)
+- GET /analytics/warehouse          — Metal warehouse stock proxies (Issue #90)
 """
 
 from typing import Any
@@ -335,22 +340,34 @@ async def get_forward_curve(
 @router.get("/balance/{commodity}")
 async def get_supply_demand_balance(
     commodity: str,
+    source: str | None = Query(None, description="Filter by source: eia_steo, usda_wasde, jodi (Issue #82)"),
+    countries: str | None = Query(None, description="Comma-separated ISO alpha-2 country codes for JODI (e.g. SA,RU)"),
     user: dict[str, Any] = Depends(check_api_rate_limit),
     db: AsyncSession = Depends(get_db),
 ):
     """Supply/demand balance for a commodity.
 
     Returns production, consumption, stock changes, and ending stocks
-    from EIA STEO (energy) or USDA WASDE (agriculture) data.
+    from EIA STEO (energy), USDA WASDE (agriculture), or JODI (Issue #82) data.
+    Use ?source=jodi&countries=SA,RU to filter JODI data by country.
     """
+    conditions = ["commodity = :commodity"]
+    params: dict[str, Any] = {"commodity": commodity}
+
+    if source:
+        conditions.append("source = :source")
+        params["source"] = source
+
+    where = " AND ".join(conditions)
+
     result = await db.execute(
-        text("""
+        text(f"""
             SELECT metric, value, unit, period, source
             FROM supply_demand_balance
-            WHERE commodity = :commodity
+            WHERE {where}
             ORDER BY period DESC, metric ASC
         """),
-        {"commodity": commodity},
+        params,
     )
     rows = result.mappings().all()
 
@@ -384,6 +401,204 @@ async def get_supply_demand_balance(
         "data": sorted_periods,
         "commodity": commodity,
         "periods_count": len(sorted_periods),
+    }
+
+
+# ── Issue #81 — Baker Hughes Rig Counts ──
+
+@router.get("/rigs")
+async def get_rig_counts(
+    region: str = Query("US", description="Region: US"),
+    type: str = Query("oil", description="Rig type: oil, gas, total, misc"),
+    weeks: int = Query(52, ge=1, le=520, description="Number of weeks of history"),
+    basin: str = Query(None, description="Basin filter: permian, eagle_ford, bakken, etc."),
+    user: dict[str, Any] = Depends(check_api_rate_limit),
+    db: AsyncSession = Depends(get_db),
+):
+    """Baker Hughes rig count data via EIA.
+
+    Returns weekly rig counts by type (oil/gas/total) with change statistics.
+    """
+    conditions = ["region = :region", "rig_type = :rig_type"]
+    params: dict[str, Any] = {"region": region, "rig_type": type, "weeks": weeks}
+
+    if basin:
+        conditions.append("basin = :basin")
+        params["basin"] = basin
+
+    where = " AND ".join(conditions)
+
+    result = await db.execute(
+        text(f"""
+            SELECT report_date, count, basin
+            FROM rig_counts
+            WHERE {where}
+            ORDER BY report_date DESC
+            LIMIT :weeks
+        """),
+        params,
+    )
+    rows = result.mappings().all()
+
+    data = [
+        {
+            "date": str(r["report_date"]),
+            "count": r["count"],
+            "basin": r["basin"],
+        }
+        for r in rows
+    ]
+
+    # Calculate week-over-week and year-over-year changes
+    summary: dict[str, Any] = {"region": region, "type": type, "weeks": weeks}
+    if len(data) >= 2:
+        summary["current"] = data[0]["count"]
+        summary["wow_change"] = data[0]["count"] - data[1]["count"]
+    if len(data) >= 52:
+        summary["yoy_change"] = data[0]["count"] - data[51]["count"]
+
+    return {"data": data, "summary": summary}
+
+
+# ── Issue #83 — Natural Gas Storage ──
+
+@router.get("/inventories/natgas")
+async def get_natgas_storage(
+    weeks: int = Query(52, ge=1, le=260, description="Number of weeks of history"),
+    user: dict[str, Any] = Depends(check_api_rate_limit),
+    db: AsyncSession = Depends(get_db),
+):
+    """EIA natural gas working storage data."""
+    result = await db.execute(
+        text("""
+            SELECT time, value, unit
+            FROM eia_inventories
+            WHERE series = 'natgas_storage'
+            ORDER BY time DESC
+            LIMIT :weeks
+        """),
+        {"weeks": weeks},
+    )
+    rows = result.mappings().all()
+    return {
+        "data": [
+            {
+                "time": r["time"].isoformat() if hasattr(r["time"], "isoformat") else str(r["time"]),
+                "value": r["value"],
+                "unit": r["unit"],
+            }
+            for r in rows
+        ],
+        "series": "natgas_storage",
+        "weeks": weeks,
+    }
+
+
+# ── Issue #83 — Strategic Petroleum Reserve ──
+
+@router.get("/spr")
+async def get_spr(
+    weeks: int = Query(52, ge=1, le=260, description="Number of weeks of history"),
+    user: dict[str, Any] = Depends(check_api_rate_limit),
+    db: AsyncSession = Depends(get_db),
+):
+    """US Strategic Petroleum Reserve stock levels."""
+    result = await db.execute(
+        text("""
+            SELECT time, value, unit
+            FROM eia_inventories
+            WHERE series = 'spr_stocks'
+            ORDER BY time DESC
+            LIMIT :weeks
+        """),
+        {"weeks": weeks},
+    )
+    rows = result.mappings().all()
+    return {
+        "data": [
+            {
+                "time": r["time"].isoformat() if hasattr(r["time"], "isoformat") else str(r["time"]),
+                "value": r["value"],
+                "unit": r["unit"],
+            }
+            for r in rows
+        ],
+        "series": "spr_stocks",
+        "weeks": weeks,
+    }
+
+
+# ── Issue #87 — Bunker Fuel Proxy Prices ──
+
+@router.get("/bunker")
+async def get_bunker_prices(
+    fuel: str = Query("vlsfo_proxy", description="Fuel type: vlsfo_proxy, mgo_proxy"),
+    days: int = Query(30, ge=1, le=365, description="Number of days of history"),
+    user: dict[str, Any] = Depends(check_api_rate_limit),
+    db: AsyncSession = Depends(get_db),
+):
+    """Bunker fuel proxy prices (heating oil → VLSFO, diesel → MGO)."""
+    result = await db.execute(
+        text(f"""
+            SELECT time, fuel_type, price_per_mt, price_per_bbl, source_ticker
+            FROM bunker_prices
+            WHERE fuel_type = :fuel
+              AND time >= NOW() - INTERVAL '{days} days'
+            ORDER BY time DESC
+        """),
+        {"fuel": fuel},
+    )
+    rows = result.mappings().all()
+    return {
+        "data": [
+            {
+                "time": r["time"].isoformat() if hasattr(r["time"], "isoformat") else str(r["time"]),
+                "fuel_type": r["fuel_type"],
+                "price_per_mt": r["price_per_mt"],
+                "price_per_bbl": r["price_per_bbl"],
+                "source_ticker": r["source_ticker"],
+            }
+            for r in rows
+        ],
+        "fuel": fuel,
+        "days": days,
+    }
+
+
+# ── Issue #90 — Metal Warehouse Stocks ──
+
+@router.get("/warehouse")
+async def get_warehouse_stocks(
+    metal: str = Query("copper", description="Metal: copper, industrial_metals, silver, gold"),
+    days: int = Query(90, ge=1, le=365, description="Number of days of history"),
+    user: dict[str, Any] = Depends(check_api_rate_limit),
+    db: AsyncSession = Depends(get_db),
+):
+    """Metal warehouse stock proxy data (ETF-based)."""
+    result = await db.execute(
+        text(f"""
+            SELECT time, metal, etf_ticker, price, volume
+            FROM warehouse_stocks
+            WHERE metal = :metal
+              AND time >= NOW() - INTERVAL '{days} days'
+            ORDER BY time DESC
+        """),
+        {"metal": metal},
+    )
+    rows = result.mappings().all()
+    return {
+        "data": [
+            {
+                "time": r["time"].isoformat() if hasattr(r["time"], "isoformat") else str(r["time"]),
+                "metal": r["metal"],
+                "etf_ticker": r["etf_ticker"],
+                "price": r["price"],
+                "volume": r["volume"],
+            }
+            for r in rows
+        ],
+        "metal": metal,
+        "days": days,
     }
 
 

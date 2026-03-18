@@ -1,10 +1,11 @@
 """Compliance endpoints — /api/v1/compliance/*
 
-- GET /compliance/sanctions   — screen a vessel against sanctions lists
-- GET /compliance/flagged     — list all flagged (sanctioned) vessels
-- GET /compliance/ais-gaps    — recent AIS gap events
-- GET /compliance/sts-events  — recent STS transfer events
-- GET /compliance/spoofing    — recent spoofing events
+- GET /compliance/sanctions        — screen a vessel against sanctions lists
+- GET /compliance/sanctions/check  — multi-list entity name screening (Issue #88)
+- GET /compliance/flagged          — list all flagged (sanctioned) vessels
+- GET /compliance/ais-gaps         — recent AIS gap events
+- GET /compliance/sts-events       — recent STS transfer events
+- GET /compliance/spoofing         — recent spoofing events
 """
 
 from typing import Any
@@ -31,6 +32,65 @@ async def check_sanctions(
     """Screen a vessel against OFAC and EU sanctions lists."""
     result = await screen_vessel(db, mmsi=mmsi, imo=imo, name=name)
     return {"data": result}
+
+
+# ── Issue #88 — Enhanced multi-list entity screening ──
+
+@router.get("/sanctions/check")
+async def check_entity_sanctions(
+    entity: str = Query(..., description="Entity name to screen against all sanctions lists"),
+    threshold: float = Query(0.3, ge=0.0, le=1.0, description="Similarity threshold (0=exact, 1=any)"),
+    user: dict[str, Any] = Depends(check_api_rate_limit),
+    db: AsyncSession = Depends(get_db),
+):
+    """Screen an entity name against OFAC SDN, EU, and other sanctions lists.
+
+    Uses PostgreSQL trigram similarity for fuzzy matching (Levenshtein-based).
+    Returns matches from all lists with similarity scores.
+    """
+    # Ensure pg_trgm extension (for similarity function)
+    await db.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm"))
+
+    result = await db.execute(
+        text("""
+            SELECT id, source, entity_name, program, imo, mmsi,
+                   flag, vessel_type, remarks, updated_at,
+                   similarity(LOWER(entity_name), LOWER(:entity)) as sim_score
+            FROM sanctioned_entities
+            WHERE similarity(LOWER(entity_name), LOWER(:entity)) >= :threshold
+            ORDER BY sim_score DESC
+            LIMIT 20
+        """),
+        {"entity": entity, "threshold": threshold},
+    )
+    rows = result.mappings().all()
+
+    matches_by_list: dict[str, list] = {}
+    for r in rows:
+        source = r["source"]
+        if source not in matches_by_list:
+            matches_by_list[source] = []
+        matches_by_list[source].append({
+            "id": r["id"],
+            "entity_name": r["entity_name"],
+            "program": r["program"],
+            "imo": r["imo"],
+            "mmsi": r["mmsi"],
+            "flag": r["flag"],
+            "vessel_type": r["vessel_type"],
+            "similarity": round(float(r["sim_score"]), 3),
+            "updated_at": r["updated_at"].isoformat() if r["updated_at"] else None,
+        })
+
+    is_sanctioned = len(rows) > 0
+
+    return {
+        "query": entity,
+        "is_sanctioned": is_sanctioned,
+        "total_matches": len(rows),
+        "matches_by_list": matches_by_list,
+        "threshold": threshold,
+    }
 
 
 @router.get("/flagged")

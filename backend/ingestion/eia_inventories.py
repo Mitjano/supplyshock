@@ -52,6 +52,19 @@ EIA_INVENTORY_SERIES: dict[str, dict] = {
         "description": "Cushing, OK Crude Oil Stocks",
         "unit": "thousand_barrels",
     },
+    # ── Issue #83 — Natural gas storage & SPR ──
+    "natgas_storage": {
+        "route": "natural-gas/stor/wkly",
+        "facet_series": "NW2_EPG0_SWO_R48_BCF",
+        "description": "US Lower-48 Natural Gas Working Storage",
+        "unit": "bcf",
+    },
+    "spr_stocks": {
+        "route": "petroleum/stoc/wstk",
+        "facet_series": "WCSSTUS1",
+        "description": "US Strategic Petroleum Reserve Stocks",
+        "unit": "thousand_barrels",
+    },
 }
 
 

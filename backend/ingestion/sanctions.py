@@ -24,6 +24,10 @@ logger = logging.getLogger(__name__)
 OFAC_SDN_CSV_URL = (
     "https://www.treasury.gov/ofac/downloads/sdn.csv"
 )
+# Issue #88 — OFAC SDN XML for richer entity data
+OFAC_SDN_XML_URL = (
+    "https://www.treasury.gov/ofac/downloads/sdn.xml"
+)
 EU_SANCTIONS_XML_URL = (
     "https://webgate.ec.europa.eu/fsd/fsf/public/files/xmlFullSanctionsList_1_1/content"
 )
@@ -200,6 +204,122 @@ def import_eu_sanctions() -> int:
             )
             conn.commit()
             logger.info("EU sanctions: upserted %d vessel entries", len(rows))
+            return len(rows)
+    finally:
+        conn.close()
+
+
+def import_ofac_sdn_xml() -> int:
+    """Download OFAC SDN XML for richer entity data (Issue #88).
+
+    XML format provides structured fields (vs CSV) for better matching.
+    Supplements the CSV import with additional entity types beyond vessels.
+    Returns the number of rows upserted.
+    """
+    logger.info("Downloading OFAC SDN XML...")
+    try:
+        resp = httpx.get(OFAC_SDN_XML_URL, timeout=180, follow_redirects=True)
+        resp.raise_for_status()
+    except Exception as e:
+        logger.error("OFAC SDN XML download failed: %s", e)
+        return 0
+
+    root = ET.fromstring(resp.content)
+    # OFAC XML namespace
+    ns = {"sdn": "http://tempuri.org/sdnList.xsd"}
+
+    rows = []
+    for entry in root.findall(".//sdn:sdnEntry", ns):
+        sdn_type = (entry.findtext("sdn:sdnType", default="", namespaces=ns) or "").strip()
+
+        # Include vessels and entities (broader than CSV import)
+        entity_name = ""
+        last_name = entry.findtext("sdn:lastName", default="", namespaces=ns) or ""
+        first_name = entry.findtext("sdn:firstName", default="", namespaces=ns) or ""
+        entity_name = f"{first_name} {last_name}".strip() if first_name else last_name.strip()
+
+        if not entity_name:
+            continue
+
+        program_el = entry.find("sdn:programList/sdn:program", ns)
+        program = program_el.text.strip() if program_el is not None and program_el.text else ""
+
+        remarks_el = entry.findtext("sdn:remarks", default="", namespaces=ns) or ""
+
+        # Extract vessel identifiers
+        imo = None
+        mmsi = None
+        vessel_type = None
+        flag = None
+
+        # Check ID list for structured data
+        for id_el in entry.findall("sdn:idList/sdn:id", ns):
+            id_type = (id_el.findtext("sdn:idType", default="", namespaces=ns) or "").strip()
+            id_number = (id_el.findtext("sdn:idNumber", default="", namespaces=ns) or "").strip()
+            if "IMO" in id_type.upper() and id_number.isdigit():
+                imo = int(id_number)
+            elif "MMSI" in id_type.upper() and id_number.isdigit():
+                mmsi = int(id_number)
+
+        # Extract from remarks if not in structured fields
+        if not imo:
+            imo_str = _extract_field(remarks_el, "IMO")
+            imo = int(imo_str) if imo_str and imo_str.isdigit() else None
+        if not mmsi:
+            mmsi_str = _extract_field(remarks_el, "MMSI")
+            mmsi = int(mmsi_str) if mmsi_str and mmsi_str.isdigit() else None
+
+        # Check vessel info elements
+        vessel_info = entry.find("sdn:vesselInfo", ns)
+        if vessel_info is not None:
+            vt = vessel_info.findtext("sdn:vesselType", default="", namespaces=ns)
+            vf = vessel_info.findtext("sdn:vesselFlag", default="", namespaces=ns)
+            vessel_type = vt.strip() if vt else None
+            flag = vf.strip() if vf else None
+
+        # Only include if it's a vessel or has vessel identifiers
+        if sdn_type.upper() not in ("VESSEL", "-0- VESSEL") and not imo and not mmsi:
+            continue
+
+        rows.append((
+            "ofac_xml",
+            entity_name,
+            program,
+            imo,
+            mmsi,
+            flag,
+            vessel_type,
+            remarks_el[:500],
+        ))
+
+    if not rows:
+        logger.warning("No vessel entries found in OFAC SDN XML")
+        return 0
+
+    conn = psycopg2.connect(settings.DATABASE_URL_SYNC)
+    try:
+        with conn.cursor() as cur:
+            execute_values(
+                cur,
+                """
+                INSERT INTO sanctioned_entities
+                    (source, entity_name, program, imo, mmsi, flag, vessel_type, remarks, updated_at)
+                VALUES %s
+                ON CONFLICT (source, entity_name)
+                DO UPDATE SET
+                    program    = EXCLUDED.program,
+                    imo        = EXCLUDED.imo,
+                    mmsi       = EXCLUDED.mmsi,
+                    flag       = EXCLUDED.flag,
+                    vessel_type = EXCLUDED.vessel_type,
+                    remarks    = EXCLUDED.remarks,
+                    updated_at = EXCLUDED.updated_at
+                """,
+                [(s, n, p, i, m, f, v, r, datetime.now(timezone.utc))
+                 for s, n, p, i, m, f, v, r in rows],
+            )
+            conn.commit()
+            logger.info("OFAC SDN XML: upserted %d vessel entries", len(rows))
             return len(rows)
     finally:
         conn.close()

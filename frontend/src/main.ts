@@ -29,6 +29,7 @@ const pageRoutes: RouteRecordRaw[] = [
   { path: 'compliance', component: () => import('./views/ComplianceDashboard.vue') },
   { path: 'analytics', component: () => import('./views/AnalyticsDashboard.vue') },
   { path: 'fleet', component: () => import('./views/FleetAnalytics.vue') },
+  { path: 'macro', component: () => import('./views/MacroDashboard.vue') },
 ]
 
 const router = createRouter({
