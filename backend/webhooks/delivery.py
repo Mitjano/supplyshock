@@ -4,10 +4,12 @@ Queries user_webhooks for matching event subscriptions and POSTs
 JSON payloads with HMAC-SHA256 signatures. Retries once on failure.
 """
 
+import asyncio
 import hashlib
 import hmac
 import json
 import logging
+import uuid
 from datetime import datetime, timezone
 
 import httpx
@@ -65,6 +67,7 @@ async def deliver_webhook(
             if event_type not in subscribed_events:
                 continue
 
+            delivery_id = str(uuid.uuid4())
             signature = hmac.new(
                 wh["secret"].encode(),
                 body.encode(),
@@ -75,6 +78,7 @@ async def deliver_webhook(
                 "Content-Type": "application/json",
                 "X-Webhook-Signature": signature,
                 "X-Webhook-Event": event_type,
+                "X-Webhook-Delivery-ID": delivery_id,
             }
 
             delivery = {
@@ -103,7 +107,8 @@ async def deliver_webhook(
                             wh["id"], wh["url"], resp.status_code, attempt,
                         )
                         if attempt == 2:
-                            break  # no more retries
+                            break
+                        await asyncio.sleep(10 * attempt)
 
                 except Exception as exc:
                     delivery["status"] = None
@@ -115,7 +120,8 @@ async def deliver_webhook(
                         wh["id"], wh["url"], attempt, exc,
                     )
                     if attempt == 2:
-                        break  # no more retries
+                        break
+                    await asyncio.sleep(10 * attempt)
 
             results.append(delivery)
 

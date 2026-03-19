@@ -1,3 +1,5 @@
+import logging
+
 from pydantic_settings import BaseSettings
 
 
@@ -43,3 +45,19 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+# Validate critical secrets in production
+if settings.APP_ENV == "production":
+    _missing = []
+    if not settings.CLERK_SECRET_KEY:
+        _missing.append("CLERK_SECRET_KEY")
+    if not settings.CLERK_PUBLISHABLE_KEY:
+        _missing.append("CLERK_PUBLISHABLE_KEY")
+    if not settings.STRIPE_SECRET_KEY:
+        _missing.append("STRIPE_SECRET_KEY")
+    if not settings.STRIPE_WEBHOOK_SECRET:
+        _missing.append("STRIPE_WEBHOOK_SECRET")
+    if not settings.SENTRY_DSN:
+        logging.getLogger(__name__).warning("SENTRY_DSN not set — error tracking disabled")
+    if _missing:
+        raise RuntimeError(f"Missing required secrets for production: {', '.join(_missing)}")

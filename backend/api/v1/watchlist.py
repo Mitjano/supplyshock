@@ -12,7 +12,7 @@ from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from dependencies import get_db
+from dependencies import get_db, resolve_user_id
 from middleware.rate_limit import check_api_rate_limit
 
 router = APIRouter(prefix="/watchlist", tags=["Watchlist"])
@@ -29,9 +29,7 @@ async def add_to_watchlist(
     db: AsyncSession = Depends(get_db),
 ):
     """Add a commodity to the user's watchlist."""
-    user_id = user.get("sub") or user.get("user_id")
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Authentication required")
+    user_id = await resolve_user_id(user, db)
 
     await db.execute(
         text("""
@@ -51,9 +49,7 @@ async def get_watchlist(
     db: AsyncSession = Depends(get_db),
 ):
     """Get user's watchlist with latest prices and 7-day sparkline data."""
-    user_id = user.get("sub") or user.get("user_id")
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Authentication required")
+    user_id = await resolve_user_id(user, db)
 
     # Get watchlist commodities with latest price
     result = await db.execute(
@@ -112,9 +108,7 @@ async def remove_from_watchlist(
     db: AsyncSession = Depends(get_db),
 ):
     """Remove a commodity from the user's watchlist."""
-    user_id = user.get("sub") or user.get("user_id")
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Authentication required")
+    user_id = await resolve_user_id(user, db)
 
     result = await db.execute(
         text("""

@@ -162,6 +162,7 @@ import { ref, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '@/stores/useAuthStore'
+import { useAlertStore } from '@/stores/useAlertStore'
 import { useLocalePath } from '@/composables/useLocalePath'
 import GlobalSearch from '@/components/ui/GlobalSearch.vue'
 import ChatPanel from '@/components/ChatPanel.vue'
@@ -176,7 +177,8 @@ const { localePath } = useLocalePath()
 const collapsed = ref(false)
 const mobileOpen = ref(false)
 const showUserMenu = ref(false)
-const alertCount = ref(3) // TODO: fetch from API
+const alertStore = useAlertStore()
+const alertCount = computed(() => alertStore.unreadCount)
 const globalSearchRef = ref<InstanceType<typeof GlobalSearch> | null>(null)
 const isMac = navigator.platform.toUpperCase().includes('MAC')
 
